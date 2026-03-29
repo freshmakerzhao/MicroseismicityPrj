@@ -8,7 +8,7 @@ const router = new Router({
     routes: [
         {
             path: '/',
-            redirect: '/page1'
+            redirect: '/page5'
         },
         {
             path: '',
@@ -34,8 +34,17 @@ const router = new Router({
                     path: '/page4',
                     name: 'page4',
                     component: () => import('@/views/page4')
+                },
+                {
+                    path: '/page5',
+                    name: 'page5',
+                    component: () => import('@/views/page5')
                 }
             ]
+        },
+        {
+            path: '*',
+            redirect: '/page5'
         }
     ]
 })
