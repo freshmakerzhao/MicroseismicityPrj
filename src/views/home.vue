@@ -5,10 +5,14 @@
                 xxx可视化平台
             </div>
             <div class="header-right">
-                <div class="settings-bar">
-                    <span class="filter-item setting-icon" @click="openConfigModal">
-                        <i class="ivu-icon ivu-icon-ios-settings-outline"></i>
-                    </span>
+                <div class="feature-nav">
+                    <span
+                        v-for="item in featureTabs"
+                        :key="item.path"
+                        class="filter-item"
+                        :class="{ active: $route.path === item.path }"
+                        @click="goFeature(item.path)"
+                    >{{ item.label }}</span>
                 </div>
             </div>
         </div>
@@ -67,6 +71,11 @@ export default {
             modal: false,
             flag: true,
             selectRangeDate: [],
+            featureTabs: [
+                { label: '功能A', path: '/page5' },
+                { label: '功能B', path: '/page1' },
+                { label: '功能C', path: '/page2' }
+            ],
             configForm: {
                 output_folder: '',
                 upload_folder: '',
@@ -83,8 +92,17 @@ export default {
     },
     mounted() {
         this.loadConfig();
+        this.$root.$on('open-global-config', this.openConfigModal);
+    },
+    beforeDestroy() {
+        this.$root.$off('open-global-config', this.openConfigModal);
     },
     methods: {
+        goFeature(path) {
+            if (this.$route.path !== path) {
+                this.$router.push(path);
+            }
+        },
         async loadConfig() {
             try {
                 const res = await getGlobalConfig();
@@ -203,6 +221,32 @@ export default {
     &-right {
         display: flex;
         align-items: center;
+    }
+}
+
+.feature-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .filter-item {
+        color: #75deef;
+        font-size: 14px;
+        padding: 8px 14px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        transition: all 0.3s;
+
+        &:hover {
+            border-color: #264e5e;
+            background: rgba(38, 78, 94, 0.3);
+        }
+
+        &.active {
+            border-color: #75deef;
+            background: rgba(117, 222, 239, 0.1);
+        }
     }
 }
 

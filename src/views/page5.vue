@@ -1,6 +1,13 @@
 <template>
     <div class="page5">
         <div class="toolbar">
+            <Button
+                class="setting-btn"
+                :disabled="isProcessing"
+                @click="openGlobalConfig"
+            >
+                设置
+            </Button>
             <input
                 ref="fileInput"
                 type="file"
@@ -53,7 +60,6 @@
             @mouseleave="stopDrag"
         >
             <div v-if="!surferImgUrl" class="placeholder">
-                <p>屏幕中间默认不放内容</p>
                 <p>请点击右上角上传文件后查看结果</p>
             </div>
 
@@ -168,6 +174,9 @@ export default {
         closeImage() {
             this.surferImgUrl = "";
             this.resetView();
+        },
+        openGlobalConfig() {
+            this.$root.$emit('open-global-config');
         }
     }
 };
@@ -191,6 +200,7 @@ export default {
     gap: 10px;
 }
 
+.setting-btn,
 .upload-btn,
 .reset-btn,
 .close-btn {
