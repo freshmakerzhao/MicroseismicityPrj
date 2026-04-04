@@ -2,26 +2,11 @@
     <div class="home-container">
         <div class="header">
             <div class="header-title">
-                大数据可视化平台
+                xxx可视化平台
             </div>
             <div class="header-right">
-                <div class="time-filter">
-                    <span 
-                        class="filter-item" 
-                        :class="{ active: activeName === 'day' }"
-                        @click="handleSelect('day')"
-                    >昨日</span>
-                    <span 
-                        class="filter-item" 
-                        :class="{ active: activeName === 'week' }"
-                        @click="handleSelect('week')"
-                    >近一周</span>
-                    <span 
-                        class="filter-item" 
-                        :class="{ active: activeName === 'month' }"
-                        @click="handleSelect('month')"
-                    >近一月</span>
-                    <span class="filter-item setting-icon" @click="modal = true">
+                <div class="settings-bar">
+                    <span class="filter-item setting-icon" @click="openConfigModal">
                         <i class="ivu-icon ivu-icon-ios-settings-outline"></i>
                     </span>
                 </div>
@@ -29,25 +14,42 @@
         </div>
         <Modal
             v-model="modal"
-            title="选择时间"
+            title="全局配置"
             :mask-closable="false"
-            @on-ok="getMonthBetween(startTime, endTime)"
+            :loading="saving"
+            @on-ok="saveConfig"
         >
-            <DatePicker 
-                @on-change="pickStartDate" 
-                :options="optionStart" 
-                type="date" 
-                placeholder="选择开始日期"
-                style="width: 200px"
-            ></DatePicker>
-            <span style="padding: 0 20px; color: #75deef">至</span>
-            <DatePicker 
-                @on-change="pickEndDate" 
-                :options="optionEnd" 
-                type="date" 
-                placeholder="选择结束日期"
-                style="width: 200px"
-            ></DatePicker>
+            <div class="config-form">
+                <div class="row-item">
+                    <span class="label">输出目录</span>
+                    <Input v-model="configForm.output_folder" placeholder="例如 D:/surfer_output"></Input>
+                    <Button size="small" @click="chooseOutputFolder">选择</Button>
+                </div>
+                <div class="row-item">
+                    <span class="label">上传目录</span>
+                    <Input v-model="configForm.upload_folder" placeholder="例如 uploads"></Input>
+                    <Button size="small" @click="chooseUploadFolder">选择</Button>
+                </div>
+                <div class="row-item">
+                    <span class="label">上传大小限制(MB)</span>
+                    <InputNumber :min="1" :max="1024" v-model="configForm.max_upload_mb"></InputNumber>
+                </div>
+                <div class="row-item">
+                    <span class="label">Surfer 安装目录</span>
+                    <Input v-model="configForm.surfer.install_dir" placeholder="例如 E:/Application_surfer11"></Input>
+                    <Button size="small" @click="chooseInstallDir">选择</Button>
+                </div>
+                <div class="row-item">
+                    <span class="label">Surfer EXE 路径</span>
+                    <Input v-model="configForm.surfer.exe_path" placeholder="可选"></Input>
+                    <Button size="small" @click="chooseExePath">选择</Button>
+                </div>
+                <div class="row-item">
+                    <span class="label">色阶文件路径</span>
+                    <Input v-model="configForm.surfer.clr_path" placeholder="留空则自动推断 Terrain.clr"></Input>
+                    <Button size="small" @click="chooseClrPath">选择</Button>
+                </div>
+            </div>
         </Modal>
         <div class="page-content">
             <router-view v-if="flag" :selectRangeDate="selectRangeDate"></router-view>
@@ -56,91 +58,117 @@
 </template>
 
 <script>
+import { getGlobalConfig, pickDirectory, pickFile, updateGlobalConfig } from "@/lib/globalConfig";
+
 export default {
     name: 'home',
     data() {
         return {
-            activeName: 'month',
             modal: false,
-            flag: false,
+            flag: true,
             selectRangeDate: [],
-            startTime: '',
-            endTime: '',
-            optionStart: {
-                disabledDate(date) {
-                    return date && date.valueOf() > Date.now() - 86400000;
+            configForm: {
+                output_folder: '',
+                upload_folder: '',
+                max_upload_mb: 30,
+                surfer: {
+                    install_dir: '',
+                    exe_path: '',
+                    clr_path: ''
                 }
             },
-            optionEnd: {},
+            saving: false,
             resizeFn: null
         }
     },
     mounted() {
-        this.handleSelect(this.activeName);
+        this.loadConfig();
     },
     methods: {
-        pickStartDate(date) {
-            this.startTime = date;
-            this.optionEnd = {
-                disabledDate(d) {
-                    return d && d.valueOf() < new Date(date).valueOf() - 86400000;
+        async loadConfig() {
+            try {
+                const res = await getGlobalConfig();
+                const raw = res.raw || {};
+                this.configForm.output_folder = raw.output_folder || '';
+                this.configForm.upload_folder = raw.upload_folder || '';
+                this.configForm.max_upload_mb = raw.max_upload_mb || 30;
+                this.configForm.surfer.install_dir = (raw.surfer && raw.surfer.install_dir) || '';
+                this.configForm.surfer.exe_path = (raw.surfer && raw.surfer.exe_path) || '';
+                this.configForm.surfer.clr_path = (raw.surfer && raw.surfer.clr_path) || '';
+            } catch (error) {
+                if (this.$Message) {
+                    this.$Message.error('读取全局配置失败');
                 }
             }
         },
-        pickEndDate(date) {
-            this.endTime = date;
+        openConfigModal() {
+            this.loadConfig();
+            this.modal = true;
         },
-        getMonthBetween(start, end) {
-            this.selectRangeDate = [];
-            let s = start.split("-");
-            let e = end.split("-");
-            let date = new Date();
-            let min = date.setFullYear(s[0], s[1] - 1);
-            let max = date.setFullYear(e[0], e[1] - 1);
-            let curr = min;
-            while (curr <= max) {
-                var month = curr.getMonth();
-                var arr = [curr.getFullYear(), month + 1];
-                this.selectRangeDate.push(arr);
-                curr.setMonth(month + 1);
+        async chooseOutputFolder() {
+            const res = await pickDirectory('选择输出目录', this.configForm.output_folder || '');
+            if (res.path) {
+                this.configForm.output_folder = res.path;
             }
         },
-        getDays(day) {
-            let arr = [];
-            for (let i = -day; i < 0; i++) {
-                let today = new Date();
-                let targetday_milliseconds = today.getTime() + 1000 * 60 * 60 * 24 * i;
-                today.setTime(targetday_milliseconds);
-                let tYear = today.getFullYear();
-                let tMonth = today.getMonth();
-                let tDate = today.getDate();
-                let date = [tYear, tMonth + 1, tDate];
-                arr.push(date);
+        async chooseUploadFolder() {
+            const res = await pickDirectory('选择上传目录', this.configForm.upload_folder || '');
+            if (res.path) {
+                this.configForm.upload_folder = res.path;
             }
-            return arr
         },
-        handleSelect(name) {
-            this.activeName = name;
-            switch (name) {
-                case 'day':
-                    this.selectRangeDate = this.getDays(1);
-                    this.flag = true;
-                    break;
-                case 'week':
-                    this.selectRangeDate = this.getDays(7);
-                    this.flag = true;
-                    break;
-                case 'month':
-                    this.selectRangeDate = this.getDays(30);
-                    this.flag = true;
-                    break;
-                case 'filter':
-                    this.modal = true;
-                    break;
-                default:
-                    break;
+        async chooseInstallDir() {
+            const res = await pickDirectory('选择 Surfer 安装目录', this.configForm.surfer.install_dir || '');
+            if (res.path) {
+                this.configForm.surfer.install_dir = res.path;
             }
-        }
+        },
+        async chooseExePath() {
+            const res = await pickFile(
+                '选择 Surfer EXE 文件',
+                this.configForm.surfer.install_dir || '',
+                [['Executable Files', '*.exe'], ['All Files', '*.*']]
+            );
+            if (res.path) {
+                this.configForm.surfer.exe_path = res.path;
+            }
+        },
+        async chooseClrPath() {
+            const res = await pickFile(
+                '选择色阶文件',
+                this.configForm.surfer.install_dir || '',
+                [['Color Scale Files', '*.clr'], ['All Files', '*.*']]
+            );
+            if (res.path) {
+                this.configForm.surfer.clr_path = res.path;
+            }
+        },
+        async saveConfig() {
+            const payload = {
+                output_folder: this.configForm.output_folder,
+                upload_folder: this.configForm.upload_folder,
+                max_upload_mb: this.configForm.max_upload_mb,
+                surfer: {
+                    install_dir: this.configForm.surfer.install_dir,
+                    exe_path: this.configForm.surfer.exe_path,
+                    clr_path: this.configForm.surfer.clr_path
+                }
+            };
+
+            try {
+                this.saving = true;
+                await updateGlobalConfig(payload);
+                if (this.$Message) {
+                    this.$Message.success('配置已保存，后续上传立即按新配置执行');
+                }
+            } catch (error) {
+                if (this.$Message) {
+                    this.$Message.error('保存配置失败');
+                }
+            } finally {
+                this.saving = false;
+            }
+        },
     },
 }
 </script>
@@ -178,10 +206,10 @@ export default {
     }
 }
 
-.time-filter {
+.settings-bar {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 10px;
 
     .filter-item {
         color: #75deef;
@@ -205,6 +233,25 @@ export default {
         &.setting-icon {
             font-size: 18px;
             padding: 8px 12px;
+        }
+    }
+}
+
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: left;
+
+    .row-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .label {
+            width: 140px;
+            color: #75deef;
+            flex-shrink: 0;
         }
     }
 }
