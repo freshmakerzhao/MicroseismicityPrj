@@ -26,3 +26,5 @@ test
 *.pyc
 output
 uploads
+tmp_input.txt
+cmake-build*
