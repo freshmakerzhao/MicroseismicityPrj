@@ -28,3 +28,7 @@ output
 uploads
 tmp_input.txt
 cmake-build*
+demo
+.tmp_pydeps
+.npm-cache
+*.log

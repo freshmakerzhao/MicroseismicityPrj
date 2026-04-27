@@ -11,3 +11,15 @@ export function generateSurferMap(file) {
         headers: { 'Content-Type': 'multipart/form-data' }
     }).then((res) => res.data);
 }
+
+export function getMicroseismicCenterline() {
+    return service.get('/microseismic-centerline').then((res) => res.data);
+}
+
+export function calculateMicroseismicWarning(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return service.post('/microseismic-warning', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }).then((res) => res.data);
+}

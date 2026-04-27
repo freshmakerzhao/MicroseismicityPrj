@@ -73,6 +73,7 @@ export default {
             selectRangeDate: [],
             featureTabs: [
                 { label: '功能A', path: '/page5' },
+                { label: '微震预警', path: '/page6' },
                 { label: '功能B', path: '/page1' },
                 { label: '功能C', path: '/page2' }
             ],
