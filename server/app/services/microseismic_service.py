@@ -53,6 +53,24 @@ class MicroseismicService:
             "events": events,
         }
 
+    def build_surfer_rows(self, file_contents: bytes) -> list[dict[str, Any]]:
+        warning_data = self.build_warning_data(file_contents, "uploaded.xls")
+        rows: list[dict[str, Any]] = []
+        for event in warning_data["events"]:
+            rows.append({
+                "map_x": event["y"],
+                "map_y": event["x"],
+                "w": event["w"],
+                "r": event["r"],
+                "energy_j": event["energy_j"],
+                "z": event["z"],
+                "event_id": event["event_id"],
+                "date": event["date"],
+                "time": event["time"],
+                "risk_level": event["risk_level"],
+            })
+        return rows
+
     def _read_events(self, file_contents: bytes) -> list[dict[str, Any]]:
         workbook = xlrd.open_workbook(file_contents=file_contents, on_demand=True)
         sheet = workbook.sheet_by_index(0)

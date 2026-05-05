@@ -11,7 +11,7 @@
             <input
                 ref="fileInput"
                 type="file"
-                accept=".xls,.xlsx,.csv,.txt"
+                accept=".xls"
                 style="display: none"
                 @change="handleUpload"
             >
