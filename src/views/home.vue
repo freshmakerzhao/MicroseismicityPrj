@@ -2,7 +2,7 @@
     <div class="home-container">
         <div class="header">
             <div class="header-title">
-                xxx可视化平台
+                红阳矿区冲击动力灾害智能感知预警平台
             </div>
             <div class="header-right">
                 <div class="feature-nav">
@@ -74,6 +74,7 @@ export default {
             featureTabs: [
                 { label: '微震W等值图', path: '/page5' },
                 { label: '微震预警', path: '/page6' },
+                { label: '3D Viewer', path: '/page7' },
                 { label: '功能B', path: '/page1' },
                 { label: '功能C', path: '/page2' }
             ],
@@ -213,9 +214,9 @@ export default {
 
     &-title {
         color: #75deef;
-        font-size: 32px;
+        font-size: 26px;
         font-weight: bold;
-        letter-spacing: 8px;
+        letter-spacing: 3px;
         text-shadow: 0 0 20px rgba(117, 222, 239, 0.5);
     }
 

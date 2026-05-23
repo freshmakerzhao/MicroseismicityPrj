@@ -32,3 +32,12 @@ demo
 .tmp_pydeps
 .npm-cache
 *.log
+
+# npm pack 安装产物
+*.tgz
+
+# Claude Code 本地 agent 状态
+.claude/
+
+# webpack 构建预览产物（运行时生成，不应入库）
+preview/
