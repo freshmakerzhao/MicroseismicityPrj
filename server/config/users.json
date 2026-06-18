@@ -1,0 +1,101 @@
+[
+  {
+    "id": "a92905a9-da75-4c0d-95a5-7a98dcd5d35d",
+    "username": "admin",
+    "display_name": "System Administrator",
+    "role": "admin",
+    "enabled": true,
+    "salt": "8362fb9f066654046c59b2e770e14d0c",
+    "password_hash": "19800541b0894e413e0b677e51827a82f9c728efe893fb9636b02cb672c5f665",
+    "created_at": "2026-06-14 17:11:47",
+    "updated_at": "2026-06-14 17:11:47"
+  },
+  {
+    "id": "3c47dd98-48b7-4f35-9f2a-92a8d84b3101",
+    "username": "monitor01",
+    "display_name": "微震监测员01",
+    "role": "user",
+    "enabled": true,
+    "salt": "b01d9da15a03dfb988a976b65de8101a",
+    "password_hash": "6d100e0db3d7af6d051808edd51d12ae3ab95f17fc5a11b44a1f98c3577b8696",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "6e7e204f-50d8-407d-b0e0-f26a0cbeb97c",
+    "username": "monitor02",
+    "display_name": "微震监测员02",
+    "role": "user",
+    "enabled": true,
+    "salt": "fc9a0e9adf2960130440294d8efbd412",
+    "password_hash": "b78fce0077939d33f15bfe395f1dc86995e96a8bb2a775ec36873e1b8d6d65ec",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "2124390d-71f5-4f52-9ce2-276afec3f4f5",
+    "username": "analyst01",
+    "display_name": "风险分析员01",
+    "role": "user",
+    "enabled": true,
+    "salt": "d9dad8f6d12636f537d236b8ea777d49",
+    "password_hash": "6c684af8912ee23387f9b1281e3892ea4ff6cd6b30aedfa71a6c730285ad49e5",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "17612445-576a-48a3-b748-a77ce4bcf8e7",
+    "username": "analyst02",
+    "display_name": "风险分析员02",
+    "role": "user",
+    "enabled": true,
+    "salt": "1d33448b9351542196605e0560762be0",
+    "password_hash": "0e148a1e02aad70d71432b51bd861699bd5dbbd1290185080c7fa4cd828cddd4",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "041d9f2a-1f3e-45c6-a1ac-b66bc58792ad",
+    "username": "engineer01",
+    "display_name": "防冲工程师01",
+    "role": "user",
+    "enabled": true,
+    "salt": "7c8cd6150459abdfb7060120e529bd9f",
+    "password_hash": "c90a3fdf64a390a8f45d850d48c4aabc8835b4cfd288f229f818240369336fd1",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "b3e7a2be-4f91-448e-9d72-50a3b03d08dd",
+    "username": "engineer02",
+    "display_name": "防冲工程师02",
+    "role": "user",
+    "enabled": true,
+    "salt": "f47968aeb25878ba6c2b2a87ffd20ac1",
+    "password_hash": "1da12cbca3faed9c23f4ee016d178ec32a82ee0ecdad18979cdff7b4d0c75128",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "d2634543-943c-4e90-a2d2-617d75ee4a98",
+    "username": "viewer01",
+    "display_name": "现场查看员01",
+    "role": "user",
+    "enabled": true,
+    "salt": "de61c18eaeeb9b042ad5997e91ff3a68",
+    "password_hash": "19893a2be627a835390ca0ddcdd584e4526370cdc6aac43686a767fbb21402d5",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  },
+  {
+    "id": "a9b4538e-ad89-4c14-a2c7-27ded28f27f3",
+    "username": "viewer02",
+    "display_name": "现场查看员02",
+    "role": "user",
+    "enabled": true,
+    "salt": "11c159fe122146518ccc47d102193704",
+    "password_hash": "4eb913434100e9fa0a8bca0f45f07a25fb669fa8dd8c28d67a5268a0c930972d",
+    "created_at": "2026-06-14 17:20:00",
+    "updated_at": "2026-06-14 17:20:00"
+  }
+]

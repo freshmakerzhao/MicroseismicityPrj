@@ -1,0 +1,68 @@
+[
+  {
+    "id": "OBS-704-A",
+    "name": "704工作面观测点A",
+    "x": -3.8,
+    "y": 6.05,
+    "z": 4.0,
+    "baseValue": 0.28,
+    "stressIndex": 0.42,
+    "energyIndex": 0.20,
+    "faultInfluence": 0.18
+  },
+  {
+    "id": "OBS-704-B",
+    "name": "704工作面观测点B",
+    "x": 2.0,
+    "y": 6.05,
+    "z": 4.0,
+    "baseValue": 0.52,
+    "stressIndex": 0.63,
+    "energyIndex": 0.38,
+    "faultInfluence": 0.31
+  },
+  {
+    "id": "OBS-706-A",
+    "name": "706工作面观测点A",
+    "x": -4.5,
+    "y": 6.05,
+    "z": 1.5,
+    "baseValue": 0.34,
+    "stressIndex": 0.50,
+    "energyIndex": 0.24,
+    "faultInfluence": 0.24
+  },
+  {
+    "id": "OBS-708-A",
+    "name": "708工作面观测点A",
+    "x": -2.0,
+    "y": 6.05,
+    "z": -1.0,
+    "baseValue": 0.61,
+    "stressIndex": 0.72,
+    "energyIndex": 0.55,
+    "faultInfluence": 0.35
+  },
+  {
+    "id": "OBS-710-A",
+    "name": "710工作面观测点A",
+    "x": -5.0,
+    "y": 6.05,
+    "z": -3.5,
+    "baseValue": 0.86,
+    "stressIndex": 0.80,
+    "energyIndex": 0.70,
+    "faultInfluence": 0.48
+  },
+  {
+    "id": "OBS-PILLAR-1",
+    "name": "残留煤柱观测点",
+    "x": 6.0,
+    "y": 6.1,
+    "z": -3.5,
+    "baseValue": 0.74,
+    "stressIndex": 0.68,
+    "energyIndex": 0.62,
+    "faultInfluence": 0.28
+  }
+]

@@ -13,6 +13,10 @@
                 <span class="file-name">{{ currentName }}</span>
             </div>
             <div class="actions">
+                <Button size="small" :disabled="loading || !observations.length" @click="toggleObservationLayer">
+                    {{ showObservations ? 'Hide Points' : 'Show Points' }}
+                </Button>
+                <Button size="small" :disabled="loading || !observations.length" @click="recalculateObservationColors">Recalculate Colors</Button>
                 <Button size="small" :disabled="loading" @click="resetCamera">Reset</Button>
                 <Button size="small" type="primary" :loading="loading" @click="$refs.fileInput.click()">Open GLB</Button>
                 <input
@@ -36,8 +40,16 @@
             {{ errorMessage }}
         </div>
 
+        <div v-if="selectedObservation" class="observation-panel">
+            <div class="panel-title">{{ selectedObservation.name }}</div>
+            <div>ID: {{ selectedObservation.id }}</div>
+            <div>Risk: {{ selectedObservation.riskValue.toFixed(3) }}</div>
+            <div>Stress: {{ selectedObservation.stressIndex.toFixed(2) }}</div>
+            <div>Energy: {{ selectedObservation.energyIndex.toFixed(2) }}</div>
+        </div>
+
         <div class="drop-hint">
-            Drag a .glb or .gltf file here
+            Drag a .glb or .gltf file here. Click colored points to inspect observations.
         </div>
     </div>
 </template>
@@ -47,7 +59,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-const DEFAULT_MODEL = '/models/ferriere_mines_lower_tunnels_1k.glb';
+const DEFAULT_MODEL = '/models/hongyang-coal-mine.glb';
+const OBSERVATION_POINTS = '/mock/hongyang-observation-points.json';
 
 export default {
     name: 'page7',
@@ -58,11 +71,18 @@ export default {
             camera: null,
             controls: null,
             loader: null,
+            raycaster: null,
+            mouse: null,
             modelRoot: null,
+            pointLayer: null,
             animationId: null,
             resizeObserver: null,
             objectUrl: '',
-            currentName: 'ferriere_mines_lower_tunnels_1k.glb',
+            currentName: 'hongyang-coal-mine.glb',
+            observations: [],
+            selectedObservation: null,
+            showObservations: true,
+            formulaVersion: 0,
             loading: false,
             isDragging: false,
             dragDepth: 0,
@@ -71,6 +91,7 @@ export default {
     },
     mounted() {
         this.initScene();
+        this.loadObservationPoints();
         this.loadModel(DEFAULT_MODEL, this.currentName);
     },
     beforeDestroy() {
@@ -88,6 +109,7 @@ export default {
             this.controls.dispose();
         }
         if (this.renderer) {
+            this.renderer.domElement.removeEventListener('click', this.onCanvasClick);
             this.renderer.dispose();
             if (this.renderer.domElement && this.renderer.domElement.parentNode) {
                 this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
@@ -110,6 +132,7 @@ export default {
             this.renderer.setSize(width, height);
             this.renderer.outputEncoding = THREE.sRGBEncoding;
             this.$refs.viewer.appendChild(this.renderer.domElement);
+            this.renderer.domElement.addEventListener('click', this.onCanvasClick);
 
             this.controls = new OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
@@ -117,9 +140,14 @@ export default {
             this.controls.screenSpacePanning = true;
 
             this.loader = new GLTFLoader();
+            this.raycaster = new THREE.Raycaster();
+            this.mouse = new THREE.Vector2();
+            this.pointLayer = new THREE.Group();
+            this.pointLayer.name = 'observation-point-layer';
 
             this.addLights();
             this.addHelpers();
+            this.scene.add(this.pointLayer);
             this.observeResize();
             this.animate();
         },
@@ -234,6 +262,124 @@ export default {
         },
         resetCamera() {
             this.fitCameraToModel();
+        },
+        async loadObservationPoints() {
+            try {
+                const response = await fetch(OBSERVATION_POINTS);
+                const points = await response.json();
+                this.observations = points.map(point => ({
+                    ...point,
+                    riskValue: this.calculateRiskValue(point)
+                }));
+                this.renderObservationLayer();
+            } catch (error) {
+                this.errorMessage = 'Observation points loading failed.';
+                // eslint-disable-next-line no-console
+                console.error(error);
+            }
+        },
+        calculateRiskValue(point) {
+            const wave = Math.sin(this.formulaVersion * 0.85 + point.x * 0.31 + point.z * 0.17) * 0.08;
+            const value =
+                point.baseValue * 0.45 +
+                point.stressIndex * 0.30 +
+                point.energyIndex * 0.18 +
+                point.faultInfluence * 0.07 +
+                wave;
+
+            return Math.max(0, Math.min(1, value));
+        },
+        riskColor(value) {
+            if (value >= 0.75) return 0xff4d4f;
+            if (value >= 0.5) return 0xfaad14;
+            if (value >= 0.25) return 0xfadb14;
+            return 0x36cfc9;
+        },
+        renderObservationLayer() {
+            this.clearObservationLayer();
+
+            this.observations.forEach(point => {
+                const material = new THREE.MeshStandardMaterial({
+                    color: this.riskColor(point.riskValue),
+                    emissive: this.riskColor(point.riskValue),
+                    emissiveIntensity: 0.35,
+                    roughness: 0.45,
+                    metalness: 0.1
+                });
+                const mesh = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.38, 24, 16),
+                    material
+                );
+
+                mesh.name = point.id;
+                mesh.position.set(point.x, point.y, point.z);
+                mesh.userData = { type: 'observation', point };
+                this.pointLayer.add(mesh);
+            });
+
+            this.pointLayer.visible = this.showObservations;
+        },
+        clearObservationLayer() {
+            if (!this.pointLayer) {
+                return;
+            }
+
+            while (this.pointLayer.children.length) {
+                const child = this.pointLayer.children.pop();
+                if (child.geometry) {
+                    child.geometry.dispose();
+                }
+                if (child.material) {
+                    child.material.dispose();
+                }
+            }
+        },
+        toggleObservationLayer() {
+            this.showObservations = !this.showObservations;
+            if (this.pointLayer) {
+                this.pointLayer.visible = this.showObservations;
+            }
+            if (!this.showObservations) {
+                this.selectedObservation = null;
+            }
+        },
+        recalculateObservationColors() {
+            this.formulaVersion += 1;
+            this.observations = this.observations.map(point => ({
+                ...point,
+                riskValue: this.calculateRiskValue(point)
+            }));
+
+            this.pointLayer.children.forEach(mesh => {
+                const point = this.observations.find(item => item.id === mesh.userData.point.id);
+                if (!point) {
+                    return;
+                }
+                mesh.userData.point = point;
+                mesh.material.color.set(this.riskColor(point.riskValue));
+                mesh.material.emissive.set(this.riskColor(point.riskValue));
+            });
+
+            if (this.selectedObservation) {
+                this.selectedObservation = this.observations.find(point => point.id === this.selectedObservation.id) || null;
+            }
+        },
+        onCanvasClick(event) {
+            if (!this.showObservations || !this.pointLayer || !this.camera || !this.renderer) {
+                return;
+            }
+
+            const rect = this.renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+
+            const hits = this.raycaster.intersectObjects(this.pointLayer.children, true);
+            if (hits.length) {
+                this.selectedObservation = hits[0].object.userData.point;
+            } else {
+                this.selectedObservation = null;
+            }
         },
         onFileChange(event) {
             const file = event.target.files && event.target.files[0];
@@ -393,6 +539,29 @@ export default {
     bottom: 34px;
     color: #ffd9d9;
     border-color: rgba(255, 100, 100, 0.5);
+}
+
+.observation-panel {
+    position: absolute;
+    left: 22px;
+    bottom: 22px;
+    z-index: 11;
+    min-width: 210px;
+    padding: 12px 14px;
+    border: 1px solid rgba(120, 199, 255, 0.45);
+    border-radius: 6px;
+    background: rgba(9, 24, 38, 0.86);
+    color: #d8f3ff;
+    font-size: 12px;
+    line-height: 1.8;
+    pointer-events: none;
+
+    .panel-title {
+        margin-bottom: 4px;
+        color: #78c7ff;
+        font-size: 14px;
+        font-weight: 600;
+    }
 }
 
 .drop-hint {

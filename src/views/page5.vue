@@ -136,7 +136,7 @@
                 @mouseleave="stopDrag"
             >
                 <div v-if="!surferImgUrl" class="placeholder">
-                    <p>请点击上方「上传文件」生成 W 等值图</p>
+                    <p>请点击上方「上传文件」生成冲击危险云图</p>
                 </div>
                 <img
                     v-else

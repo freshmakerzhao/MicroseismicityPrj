@@ -2,12 +2,17 @@
     <div class="home-container">
         <div class="header">
             <div class="header-title">
-                红阳矿区冲击动力灾害智能感知预警平台
+                冲击地压矿井微震监测智能判识冲击危险等级及区划系统
             </div>
             <div class="header-right">
+                <div class="user-actions">
+                    <span class="user-name">{{ currentUserLabel }}</span>
+                    <span class="role-tag">{{ currentRoleLabel }}</span>
+                    <Button size="small" type="ghost" @click="handleLogout">退出登录</Button>
+                </div>
                 <div class="feature-nav">
                     <span
-                        v-for="item in featureTabs"
+                        v-for="item in visibleFeatureTabs"
                         :key="item.path"
                         class="filter-item"
                         :class="{ active: $route.path === item.path }"
@@ -63,6 +68,7 @@
 
 <script>
 import { getGlobalConfig, pickDirectory, pickFile, updateGlobalConfig } from "@/lib/globalConfig";
+import { getCurrentUser, isAdmin, logout } from "@/lib/auth";
 
 export default {
     name: 'home',
@@ -72,12 +78,15 @@ export default {
             flag: true,
             selectRangeDate: [],
             featureTabs: [
-                { label: '微震W等值图', path: '/page5' },
-                { label: '微震预警', path: '/page6' },
-                { label: '3D Viewer', path: '/page7' },
-                { label: '功能B', path: '/page1' },
-                { label: '功能C', path: '/page2' }
+                { label: '冲击危险云图', path: '/page5' },
+                // { label: '微震预警', path: '/page6' },
+                // { label: '3D Viewer', path: '/page7' },
+                { label: '三维井下地图', path: '/page8' },
+                { label: '人员管理', path: '/users', adminOnly: true },
+                // { label: '功能B', path: '/page1' },
+                // { label: '功能C', path: '/page2' }
             ],
+            currentUser: null,
             configForm: {
                 output_folder: '',
                 upload_folder: '',
@@ -92,7 +101,22 @@ export default {
             resizeFn: null
         }
     },
+    computed: {
+        visibleFeatureTabs() {
+            return this.featureTabs.filter((item) => !item.adminOnly || isAdmin());
+        },
+        currentUserLabel() {
+            if (!this.currentUser) {
+                return '未登录';
+            }
+            return this.currentUser.display_name || this.currentUser.username;
+        },
+        currentRoleLabel() {
+            return this.currentUser && this.currentUser.role === 'admin' ? '管理员' : '用户';
+        }
+    },
     mounted() {
+        this.currentUser = getCurrentUser();
         this.loadConfig();
         this.$root.$on('open-global-config', this.openConfigModal);
     },
@@ -104,6 +128,10 @@ export default {
             if (this.$route.path !== path) {
                 this.$router.push(path);
             }
+        },
+        async handleLogout() {
+            await logout();
+            this.$router.replace('/login');
         },
         async loadConfig() {
             try {
@@ -203,7 +231,7 @@ export default {
 }
 
 .header {
-    height: 80px;
+    height: 96px;
     background: linear-gradient(180deg, #0a0f3a 0%, #03044a 100%);
     display: flex;
     justify-content: space-between;
@@ -222,7 +250,11 @@ export default {
 
     &-right {
         display: flex;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 10px;
+        min-width: 520px;
     }
 }
 
@@ -249,6 +281,35 @@ export default {
             border-color: #75deef;
             background: rgba(117, 222, 239, 0.1);
         }
+    }
+}
+
+.user-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #75deef;
+    font-size: 13px;
+    white-space: nowrap;
+    padding-bottom: 2px;
+
+    .user-name {
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .role-tag {
+        padding: 2px 8px;
+        border: 1px solid rgba(117, 222, 239, 0.5);
+        border-radius: 3px;
+        background: rgba(117, 222, 239, 0.08);
+    }
+
+    /deep/ .ivu-btn {
+        color: #75deef;
+        border-color: rgba(117, 222, 239, 0.55);
+        background: transparent;
     }
 }
 
@@ -304,7 +365,7 @@ export default {
 
 .page-content {
     flex: 1;
-    height: calc(100% - 80px);
+    height: calc(100% - 96px);
     overflow: hidden;
 }
 

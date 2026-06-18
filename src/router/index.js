@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import Router from 'vue-router'
 import home from '@/views/home';
+import { isAdmin, isLoggedIn } from '@/lib/auth';
 
 Vue.use(Router)
 
@@ -11,9 +12,20 @@ const router = new Router({
             redirect: '/page5'
         },
         {
+            path: '/login',
+            name: 'login',
+            component: () => import('@/views/login')
+        },
+        {
+            path: '/register',
+            name: 'register',
+            component: () => import('@/views/register')
+        },
+        {
             path: '',
             name: 'home',
             component: home,
+            meta: { requiresAuth: true },
             children: [
                 {
                     path: '/page1',
@@ -49,6 +61,17 @@ const router = new Router({
                     path: '/page7',
                     name: 'page7',
                     component: () => import('@/views/page7')
+                },
+                {
+                    path: '/page8',
+                    name: 'page8',
+                    component: () => import('@/views/page8')
+                },
+                {
+                    path: '/users',
+                    name: 'users',
+                    component: () => import('@/views/userManagement'),
+                    meta: { requiresAdmin: true }
                 }
             ]
         },
@@ -58,4 +81,31 @@ const router = new Router({
         }
     ]
 })
+
+router.beforeEach((to, from, next) => {
+    const loggedIn = isLoggedIn();
+    const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+    const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin);
+
+    if ((to.path === '/login' || to.path === '/register') && loggedIn) {
+        next('/page5');
+        return;
+    }
+
+    if (requiresAuth && !loggedIn) {
+        next({
+            path: '/login',
+            query: { redirect: to.fullPath }
+        });
+        return;
+    }
+
+    if (requiresAdmin && !isAdmin()) {
+        next('/page5');
+        return;
+    }
+
+    next();
+});
+
 export default router
