@@ -454,7 +454,9 @@ export default {
     position: relative;
     width: 100%;
     height: 100%;
-    background: #05122a;
+    background:
+        radial-gradient(circle at 50% 40%, rgba(48, 220, 255, 0.1), transparent 34%),
+        rgba(2, 8, 20, 0.2);
     overflow: hidden;
 }
 
@@ -465,9 +467,9 @@ export default {
 
 .viewer-toolbar {
     position: absolute;
-    top: 16px;
-    left: 22px;
-    right: 22px;
+    top: 18px;
+    left: 28px;
+    right: 28px;
     z-index: 10;
     display: flex;
     align-items: center;
@@ -477,14 +479,20 @@ export default {
 }
 
 .model-info {
+    padding: 10px 14px;
+    border: 1px solid rgba(48, 220, 255, 0.24);
+    background: linear-gradient(90deg, rgba(8, 39, 74, 0.76), rgba(8, 39, 74, 0.12));
     color: #d8f3ff;
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 
     .title {
         display: block;
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 600;
         letter-spacing: 1px;
+        background: linear-gradient(180deg, #dffbff 0%, #73ecff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
 
     .sub {
@@ -500,6 +508,13 @@ export default {
     align-items: center;
     gap: 10px;
     pointer-events: auto;
+
+    /deep/ .ivu-btn {
+        color: #c4f3fe;
+        border-color: rgba(48, 220, 255, 0.55);
+        background: linear-gradient(180deg, rgba(21, 91, 127, 0.85), rgba(7, 30, 64, 0.85));
+        box-shadow: inset 0 0 12px rgba(48, 220, 255, 0.12);
+    }
 }
 
 .state-panel,
@@ -514,8 +529,8 @@ export default {
     gap: 12px;
     padding: 18px 22px;
     border: 1px solid rgba(120, 199, 255, 0.4);
-    border-radius: 6px;
-    background: rgba(9, 24, 38, 0.92);
+    border-radius: 4px;
+    background: rgba(5, 18, 42, 0.9);
     color: #d8f3ff;
 }
 
@@ -532,9 +547,10 @@ export default {
     bottom: 22px;
     z-index: 8;
     padding: 12px 14px;
-    border: 1px solid rgba(120, 199, 255, 0.25);
-    border-radius: 6px;
-    background: rgba(8, 22, 42, 0.78);
+    border: 1px solid rgba(48, 220, 255, 0.28);
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(13, 55, 80, 0.72), rgba(6, 20, 45, 0.76));
+    box-shadow: inset 0 0 18px rgba(48, 220, 255, 0.08);
     color: #d8f3ff;
     font-size: 12px;
     line-height: 1.9;

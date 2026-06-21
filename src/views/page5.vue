@@ -694,12 +694,12 @@ export default {
     position: relative;
     height: 100%;
     width: 100%;
-    background: radial-gradient(circle at 50% 20%, #0a1d66 0%, #03044a 50%, #02022f 100%);
+    background: transparent;
     overflow: hidden;
     display: flex;
     flex-direction: row;
-    gap: 12px;
-    padding: 12px;
+    gap: 14px;
+    padding: 10px 22px 22px;
     box-sizing: border-box;
 }
 
@@ -739,24 +739,54 @@ export default {
 .panel-card {
     position: relative;
     flex: 1;
-    background: linear-gradient(180deg, rgba(13, 36, 81, 0.45) 0%, rgba(6, 14, 50, 0.65) 100%);
-    border: 1px solid #0D2451;
+    background:
+        linear-gradient(180deg, rgba(20, 76, 103, 0.46) 0%, rgba(6, 18, 44, 0.64) 100%),
+        rgba(5, 18, 42, 0.2);
+    border: 1px solid rgba(48, 220, 255, 0.24);
     border-radius: 4px;
     padding: 36px 12px 12px 12px;
     overflow: hidden;
     box-sizing: border-box;
+    box-shadow: inset 0 0 24px rgba(48, 220, 255, 0.08), 0 12px 24px rgba(0, 0, 0, 0.22);
+
+    &::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 0;
+        height: 34px;
+        background:
+            linear-gradient(90deg, rgba(48, 220, 255, 0.24), rgba(48, 220, 255, 0.02)),
+            linear-gradient(180deg, rgba(20, 119, 155, 0.45), rgba(20, 119, 155, 0.08));
+        clip-path: polygon(0 0, 44% 0, 48% 10px, 100% 10px, 100% 100%, 0 100%);
+        pointer-events: none;
+    }
+
+    &::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80px;
+        height: 1px;
+        background: #30dcff;
+        box-shadow: 0 0 14px rgba(48, 220, 255, 0.86);
+    }
 }
 
 .panel-title {
     position: absolute;
-    top: 6px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #6EDDF1;
-    font-size: 13px;
+    top: 5px;
+    left: 20px;
+    color: #dff9ff;
+    font-size: 14px;
+    font-weight: 600;
     letter-spacing: 1px;
-    padding: 4px 14px;
-    background: radial-gradient(55% 55% ellipse, rgba(7, 9, 34, 0.95) 60%, rgb(21, 67, 145));
+    padding: 3px 0;
+    background: linear-gradient(180deg, #dffbff 0%, #73ecff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
     white-space: nowrap;
     z-index: 2;
 }
@@ -885,10 +915,13 @@ export default {
     display: flex;
     flex-direction: column;
     position: relative;
-    background: rgba(3, 4, 74, 0.3);
-    border: 1px solid #0D2451;
+    background:
+        radial-gradient(circle at 50% 45%, rgba(49, 191, 219, 0.12), transparent 34%),
+        rgba(5, 18, 42, 0.32);
+    border: 1px solid rgba(48, 220, 255, 0.25);
     border-radius: 4px;
     overflow: hidden;
+    box-shadow: inset 0 0 40px rgba(48, 220, 255, 0.08), 0 14px 30px rgba(0, 0, 0, 0.24);
 }
 
 .toolbar {
@@ -898,14 +931,15 @@ export default {
     justify-content: flex-end;
     gap: 10px;
     padding: 10px 14px;
-    border-bottom: 1px solid rgba(28, 90, 179, 0.35);
-    background: rgba(7, 19, 50, 0.45);
+    border-bottom: 1px solid rgba(48, 220, 255, 0.22);
+    background: linear-gradient(90deg, rgba(6, 22, 55, 0.74), rgba(8, 48, 72, 0.46));
 }
 
 .surfer-btn {
-    background: linear-gradient(135deg, #1a3c58 0%, #0d2451 100%);
-    border: 1px solid #6eddf1;
-    color: #6eddf1;
+    background: linear-gradient(180deg, rgba(21, 91, 127, 0.85), rgba(7, 30, 64, 0.85));
+    border: 1px solid rgba(48, 220, 255, 0.58);
+    color: #c4f3fe;
+    box-shadow: inset 0 0 12px rgba(48, 220, 255, 0.12);
 }
 
 .stage {
@@ -924,11 +958,12 @@ export default {
 
 .placeholder {
     text-align: center;
-    color: #7fcde8;
+    color: #c4f3fe;
     line-height: 1.9;
     font-size: 18px;
     letter-spacing: 1px;
     opacity: 0.9;
+    text-shadow: 0 0 18px rgba(48, 220, 255, 0.38);
 }
 
 .surfer-image {

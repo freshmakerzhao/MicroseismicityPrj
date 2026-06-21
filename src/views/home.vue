@@ -1,26 +1,24 @@
 <template>
     <div class="home-container">
-        <div class="header">
-            <div class="header-title">
-                冲击地压矿井微震监测智能判识冲击危险等级及区划系统
-            </div>
-            <div class="header-right">
-                <div class="user-actions">
-                    <span class="user-name">{{ currentUserLabel }}</span>
-                    <span class="role-tag">{{ currentRoleLabel }}</span>
-                    <Button size="small" type="ghost" @click="handleLogout">退出登录</Button>
-                </div>
-                <div class="feature-nav">
-                    <span
-                        v-for="item in visibleFeatureTabs"
-                        :key="item.path"
-                        class="filter-item"
-                        :class="{ active: $route.path === item.path }"
-                        @click="goFeature(item.path)"
-                    >{{ item.label }}</span>
-                </div>
-            </div>
-        </div>
+        <TechHeader
+            title="冲击地压矿井微震监测智能判识冲击危险等级及区划系统"
+            subtitle="MICROSEISMIC ROCKBURST RISK IDENTIFICATION PLATFORM"
+            :user-name="currentUserLabel"
+            :role-label="currentRoleLabel"
+            @logout="handleLogout"
+        >
+            <template slot="left">
+                <span>在线监测</span>
+                <span>智能判识</span>
+            </template>
+            <template slot="nav">
+                <TechNav
+                    :items="visibleFeatureTabs"
+                    :active-path="$route.path"
+                    @select="goFeature"
+                />
+            </template>
+        </TechHeader>
         <Modal
             v-model="modal"
             title="全局配置"
@@ -67,11 +65,17 @@
 </template>
 
 <script>
+import TechHeader from '@/components/tech/TechHeader.vue';
+import TechNav from '@/components/tech/TechNav.vue';
 import { getGlobalConfig, pickDirectory, pickFile, updateGlobalConfig } from "@/lib/globalConfig";
 import { getCurrentUser, isAdmin, logout } from "@/lib/auth";
 
 export default {
     name: 'home',
+    components: {
+        TechHeader,
+        TechNav
+    },
     data() {
         return {
             modal: false,
@@ -225,91 +229,34 @@ export default {
 .home-container {
     height: 100%;
     width: 100%;
+    position: relative;
     display: flex;
     flex-direction: column;
-    background: #03044A;
-}
+    background:
+        radial-gradient(circle at 50% 20%, rgba(25, 91, 142, 0.38) 0%, rgba(3, 20, 46, 0.95) 42%, #020814 100%);
+    overflow: hidden;
 
-.header {
-    height: 96px;
-    background: linear-gradient(180deg, #0a0f3a 0%, #03044a 100%);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 40px;
-    border-bottom: 1px solid #1a3c58;
-    flex-shrink: 0;
-
-    &-title {
-        color: #75deef;
-        font-size: 26px;
-        font-weight: bold;
-        letter-spacing: 3px;
-        text-shadow: 0 0 20px rgba(117, 222, 239, 0.5);
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: url("../assets/threemaps/images/bg.png") center / cover no-repeat;
+        opacity: 0.42;
+        pointer-events: none;
     }
 
-    &-right {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        justify-content: center;
-        gap: 10px;
-        min-width: 520px;
-    }
-}
-
-.feature-nav {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-
-    .filter-item {
-        color: #75deef;
-        font-size: 14px;
-        padding: 8px 14px;
-        cursor: pointer;
-        border: 1px solid transparent;
-        border-radius: 4px;
-        transition: all 0.3s;
-
-        &:hover {
-            border-color: #264e5e;
-            background: rgba(38, 78, 94, 0.3);
-        }
-
-        &.active {
-            border-color: #75deef;
-            background: rgba(117, 222, 239, 0.1);
-        }
-    }
-}
-
-.user-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #75deef;
-    font-size: 13px;
-    white-space: nowrap;
-    padding-bottom: 2px;
-
-    .user-name {
-        max-width: 180px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .role-tag {
-        padding: 2px 8px;
-        border: 1px solid rgba(117, 222, 239, 0.5);
-        border-radius: 3px;
-        background: rgba(117, 222, 239, 0.08);
-    }
-
-    /deep/ .ivu-btn {
-        color: #75deef;
-        border-color: rgba(117, 222, 239, 0.55);
-        background: transparent;
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background-image:
+            linear-gradient(rgba(48, 220, 255, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(48, 220, 255, 0.08) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(to bottom, transparent 0%, #000 18%, #000 100%);
+        pointer-events: none;
     }
 }
 
@@ -364,8 +311,10 @@ export default {
 }
 
 .page-content {
+    position: relative;
+    z-index: 2;
     flex: 1;
-    height: calc(100% - 96px);
+    height: calc(100% - 120px);
     overflow: hidden;
 }
 

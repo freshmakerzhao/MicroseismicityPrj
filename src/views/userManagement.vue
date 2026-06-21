@@ -156,9 +156,9 @@ export default {
 .user-page {
     width: 100%;
     height: 100%;
-    padding: 24px;
+    padding: 10px 22px 22px;
     background: transparent;
-    color: #1f2d3d;
+    color: #d8f3ff;
     overflow: auto;
 }
 
@@ -167,25 +167,37 @@ export default {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 18px;
+    padding: 12px 16px;
+    border: 1px solid rgba(48, 220, 255, 0.18);
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(8, 39, 74, 0.66), rgba(8, 39, 74, 0.12));
+
+    /deep/ .ivu-btn {
+        color: #c4f3fe;
+        border-color: rgba(48, 220, 255, 0.55);
+        background: linear-gradient(180deg, rgba(21, 91, 127, 0.85), rgba(7, 30, 64, 0.85));
+    }
 }
 
 .title {
     font-size: 22px;
     font-weight: 700;
-    color: white; /* --- IGNORE --- */
-    background: transparent; /* --- IGNORE --- */
+    color: #dff9ff;
+    letter-spacing: 1px;
+    text-shadow: 0 0 12px rgba(48, 220, 255, 0.45);
 }
 
 .sub {
     margin-top: 6px;
     font-size: 13px;
-    color: #64748b;
+    color: rgba(196, 243, 254, 0.66);
 }
 
 .user-table {
     background: #fff;
     border-radius: 4px;
     overflow: hidden;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(48, 220, 255, 0.18);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 </style>

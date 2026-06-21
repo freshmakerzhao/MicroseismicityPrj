@@ -76,7 +76,9 @@ export default {
     justify-content: center;
     gap: 32px;
     padding: 40px 24px;
-    background: radial-gradient(circle at 50% 20%, #0b2560 0%, #06143a 44%, #020617 100%);
+    background:
+        radial-gradient(circle at 50% 20%, rgba(25, 91, 142, 0.45) 0%, rgba(3, 20, 46, 0.96) 44%, #020617 100%),
+        url("../assets/threemaps/images/bg.png") center / cover no-repeat;
 }
 
 .auth-card {
@@ -84,8 +86,8 @@ export default {
     padding: 34px 36px 30px;
     border: 1px solid rgba(117, 222, 239, 0.42);
     border-radius: 8px;
-    background: rgba(5, 16, 46, 0.92);
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+    background: linear-gradient(180deg, rgba(13, 55, 80, 0.84), rgba(5, 16, 46, 0.92));
+    box-shadow: inset 0 0 24px rgba(48, 220, 255, 0.08), 0 24px 70px rgba(0, 0, 0, 0.42);
 }
 
 
