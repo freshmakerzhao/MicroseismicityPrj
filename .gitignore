@@ -32,6 +32,8 @@ demo
 .tmp_pydeps
 .npm-cache
 *.log
+~$*.docx
+docs/~$*.docx
 
 # npm pack 安装产物
 *.tgz
