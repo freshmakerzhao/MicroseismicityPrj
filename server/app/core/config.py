@@ -25,11 +25,18 @@ class Settings:
                 "http://localhost:8080",
                 "http://localhost:8081",
                 "http://localhost:8082",
+                "http://localhost:8083",
+                "http://localhost:8084",
+                "http://localhost:8085",
                 "http://localhost:3000",
                 "http://127.0.0.1:8080",
                 "http://127.0.0.1:8081",
                 "http://127.0.0.1:8082",
+                "http://127.0.0.1:8083",
+                "http://127.0.0.1:8084",
+                "http://127.0.0.1:8085",
             ],
+            "cors_origin_regex": r"https?://(localhost|127\.0\.0\.1):\d+",
             "surfer": {
                 "prog_id": "Surfer.Application",
                 "install_dir": "E:/Application_surfer11",
@@ -57,6 +64,7 @@ class Settings:
         os.makedirs(self.output_folder, exist_ok=True)
 
         self.cors_origins = merged.get("cors_origins", [])
+        self.cors_origin_regex = merged.get("cors_origin_regex", "")
 
         surfer_config = merged.get("surfer", {})
         self.surfer_prog_id = surfer_config.get("prog_id", "Surfer.Application")
