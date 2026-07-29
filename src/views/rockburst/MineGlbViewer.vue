@@ -8,10 +8,6 @@
     @drop.prevent="onDrop"
   >
     <div class="viewer-toolbar">
-      <div class="model-info">
-        <span class="title">井下地图</span>
-        <span class="file-name">{{ currentName }}</span>
-      </div>
       <div class="viewer-actions">
         <button class="viewer-btn" type="button" :disabled="loading || !observations.length" @click="toggleObservationLayer">
           {{ showObservations ? "隐藏震源" : "显示震源" }}
@@ -22,11 +18,25 @@
         <button class="viewer-btn" type="button" :disabled="loading || !modelRootReady" @click="regenerateSyntheticSources">
           重新生成
         </button>
-        <button class="viewer-btn" type="button" :disabled="loading || !modelStats" @click="showModelInfo = !showModelInfo">
-          {{ showModelInfo ? "隐藏信息" : "模型信息" }}
+        <button class="viewer-btn" type="button" :disabled="loading || !riskOverlayReady" @click="toggleRiskOverlay">
+          {{ showRiskOverlay ? "隐藏云图" : "显示云图" }}
+        </button>
+        <label class="opacity-control" title="调整工作面云图透明度">
+          <span>云图</span>
+          <input
+            v-model.number="riskOverlayOpacity"
+            type="range"
+            min="0.25"
+            max="1"
+            step="0.05"
+            :disabled="!riskOverlayReady"
+            @input="updateRiskOverlayOpacity"
+          />
+        </label>
+        <button class="viewer-btn" type="button" :disabled="loading || !riskOverlayReady" @click="focusRiskWorkface">
+          聚焦工作面
         </button>
         <button class="viewer-btn" type="button" :disabled="loading" @click="resetCamera">重置视角</button>
-        <button class="viewer-btn primary" type="button" :disabled="loading" @click="fileInputRef && fileInputRef.click()">打开 GLB</button>
         <input
           ref="fileInputRef"
           class="file-input"
@@ -46,21 +56,6 @@
 
     <div v-if="errorMessage" class="error-panel">{{ errorMessage }}</div>
 
-    <div v-if="showModelInfo && modelStats" class="model-stats-panel">
-      <div class="panel-title">GLB 模型信息</div>
-      <div class="stats-grid">
-        <span>节点</span><strong>{{ modelStats.nodeCount }}</strong>
-        <span>网格</span><strong>{{ modelStats.meshCount }}</strong>
-        <span>顶点</span><strong>{{ formatNumber(modelStats.vertexCount) }}</strong>
-        <span>三角面</span><strong>{{ formatNumber(modelStats.triangleCount) }}</strong>
-        <span>材质</span><strong>{{ modelStats.materialCount }}</strong>
-        <span>动画</span><strong>{{ modelStats.animationCount }}</strong>
-      </div>
-      <div class="stats-line">尺寸 X/Y/Z：{{ modelStats.sizeText }}</div>
-      <div class="stats-line">中心点：{{ modelStats.centerText }}</div>
-      <div class="stats-line">假设震源：{{ observations.length }} 个</div>
-    </div>
-
     <div v-if="selectedObservation" class="observation-panel">
       <div class="panel-title">{{ selectedObservation.name }}</div>
       <div>ID：{{ selectedObservation.id }}</div>
@@ -71,8 +66,6 @@
       <div>能量指数：{{ selectedObservation.energyIndex.toFixed(2) }}</div>
       <div>坐标：{{ selectedObservation.x.toFixed(2) }}, {{ selectedObservation.y.toFixed(2) }}, {{ selectedObservation.z.toFixed(2) }}</div>
     </div>
-
-    <div class="drop-hint">拖拽 .glb / .gltf 到此处加载；点击彩色震源点查看信息</div>
   </div>
 </template>
 
@@ -83,20 +76,30 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 
-const DEFAULT_MODEL = "/models/hangdao.glb"
+const DEFAULT_MODEL = "/models/zhengti-demo.glb"
+const DEFAULT_RISK_MAP = "/defaults/hongyang-rockburst-warning-map.png"
 const SYNTHETIC_POINT_COUNT = 28
 const EXCLUDED_SOURCE_IDS = new Set(["MS-008", "MS-013"])
+const DEMO_WORKFACE = {
+  xMin: 0.0245,
+  xMax: 0.2229,
+  y: 0.365,
+  zMin: -0.2069,
+  zMax: 0.289,
+}
 
 const viewerRef = ref(null)
 const fileInputRef = ref(null)
 const loading = ref(false)
 const isDragging = ref(false)
-const currentName = ref("hangdao.glb")
+const currentName = ref("整体巷道模型")
 const errorMessage = ref("")
 const observations = ref([])
 const selectedObservation = ref(null)
 const showObservations = ref(true)
-const showModelInfo = ref(true)
+const showRiskOverlay = ref(true)
+const riskOverlayOpacity = ref(0.82)
+const riskOverlayReady = ref(false)
 const modelStats = ref(null)
 const modelRootReady = ref(false)
 
@@ -109,6 +112,11 @@ let raycaster = null
 let mouse = null
 let modelRoot = null
 let pointLayer = null
+let riskOverlayGroup = null
+let riskOverlayMaterial = null
+let riskOverlayTexture = null
+let gridHelper = null
+let axesHelper = null
 let animationId = 0
 let resizeObserver = null
 let objectUrl = ""
@@ -128,6 +136,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (sceneTimeline) sceneTimeline.kill()
   disposeObjectUrl()
+  disposeRiskOverlay()
   disposeModel()
   clearObservationLayer()
   if (resizeObserver) resizeObserver.disconnect()
@@ -191,13 +200,13 @@ function addLights() {
 }
 
 function addHelpers() {
-  const grid = new THREE.GridHelper(20, 20, 0x31506b, 0x203647)
-  grid.name = "viewer-grid"
-  scene.add(grid)
+  gridHelper = new THREE.GridHelper(1, 20, 0x31506b, 0x203647)
+  gridHelper.name = "viewer-grid"
+  scene.add(gridHelper)
 
-  const axes = new THREE.AxesHelper(2)
-  axes.name = "viewer-axes"
-  scene.add(axes)
+  axesHelper = new THREE.AxesHelper(0.12)
+  axesHelper.name = "viewer-axes"
+  scene.add(axesHelper)
 }
 
 function observeResize() {
@@ -251,6 +260,11 @@ function loadModel(url, name) {
       currentPointRadius = calculatePointRadius(modelStats.value)
       observations.value = generateSyntheticSources(modelRoot, SYNTHETIC_POINT_COUNT, currentModelSeed)
       renderObservationLayer()
+      updateSceneHelpers(modelStats.value)
+
+      if (url === DEFAULT_MODEL) {
+        createRiskOverlay()
+      }
 
       fitCameraToModel(true)
       modelRootReady.value = true
@@ -274,6 +288,9 @@ function normalizeMaterials(root) {
     materials.filter(Boolean).forEach((material) => {
       if (material.map && "colorSpace" in material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace
+      }
+      if (!material.map && material.color) {
+        material.color.set(0x6d8390)
       }
       material.needsUpdate = true
     })
@@ -378,7 +395,7 @@ function generateSyntheticSources(root, count, seed) {
     const depth = Math.abs(position.y - box.max.y)
     const point = {
       id: `MS-${String(i + 1).padStart(3, "0")}`,
-      name: `假设震源 ${String(i + 1).padStart(2, "0")}`,
+      name: `震源${String(i + 1).padStart(2, "0")}`,
       x: position.x,
       y: position.y,
       z: position.z,
@@ -399,7 +416,176 @@ function generateSyntheticSources(root, count, seed) {
 function calculatePointRadius(stats) {
   if (!stats) return 0.38
   const maxSize = Math.max(stats.size.x, stats.size.y, stats.size.z) || 1
-  return THREE.MathUtils.clamp(maxSize * 0.012, 0.08, 2.2)
+  return THREE.MathUtils.clamp(maxSize * 0.012, 0.006, 2.2)
+}
+
+function updateSceneHelpers(stats) {
+  if (!stats) return
+  const maxSize = Math.max(stats.size.x, stats.size.y, stats.size.z) || 1
+  if (gridHelper) {
+    gridHelper.scale.setScalar(maxSize * 1.45)
+    gridHelper.position.set(stats.center.x, stats.box.min.y - maxSize * 0.012, stats.center.z)
+  }
+  if (axesHelper) {
+    axesHelper.scale.setScalar(maxSize)
+    axesHelper.position.copy(stats.box.min)
+  }
+}
+
+function createRiskOverlay() {
+  disposeRiskOverlay()
+  if (!modelRoot) return
+
+  riskOverlayGroup = new THREE.Group()
+  riskOverlayGroup.name = "demo-workface-risk-overlay"
+
+  const geometry = new THREE.BufferGeometry()
+  const { xMin, xMax, y, zMin, zMax } = DEMO_WORKFACE
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [
+        xMin, y, zMin,
+        xMax, y, zMin,
+        xMax, y, zMax,
+        xMin, y, zMax,
+      ],
+      3
+    )
+  )
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2))
+  geometry.setIndex([0, 2, 1, 0, 3, 2])
+  geometry.computeVertexNormals()
+
+  riskOverlayMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: riskOverlayOpacity.value,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+  })
+
+  const surface = new THREE.Mesh(geometry, riskOverlayMaterial)
+  surface.name = "upper-workface-risk-map"
+  surface.renderOrder = 5
+  riskOverlayGroup.add(surface)
+
+  const border = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: 0x63e8ff, transparent: true, opacity: 0.8 })
+  )
+  border.renderOrder = 6
+  riskOverlayGroup.add(border)
+  riskOverlayGroup.visible = showRiskOverlay.value
+  modelRoot.add(riskOverlayGroup)
+
+  new THREE.TextureLoader().load(
+    DEFAULT_RISK_MAP,
+    (sourceTexture) => {
+      if (!riskOverlayMaterial || !riskOverlayGroup) {
+        sourceTexture.dispose()
+        return
+      }
+      const image = sourceTexture.image
+      const crop = {
+        x: Math.round(image.width * 0.0534),
+        y: Math.round(image.height * 0.0687),
+        width: Math.round(image.width * 0.799),
+        height: Math.round(image.height * 0.843),
+      }
+      const canvas = document.createElement("canvas")
+      canvas.width = crop.height
+      canvas.height = crop.width
+      const context = canvas.getContext("2d")
+      context.translate(canvas.width, 0)
+      context.rotate(Math.PI / 2)
+      context.drawImage(
+        image,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height,
+        0,
+        0,
+        crop.width,
+        crop.height
+      )
+      sourceTexture.dispose()
+
+      riskOverlayTexture = new THREE.CanvasTexture(canvas)
+      riskOverlayTexture.colorSpace = THREE.SRGBColorSpace
+      riskOverlayTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
+      riskOverlayMaterial.map = riskOverlayTexture
+      riskOverlayMaterial.needsUpdate = true
+      riskOverlayReady.value = true
+    },
+    undefined,
+    () => {
+      riskOverlayReady.value = false
+      errorMessage.value = "工作面云图纹理加载失败"
+    }
+  )
+}
+
+function toggleRiskOverlay() {
+  showRiskOverlay.value = !showRiskOverlay.value
+  if (riskOverlayGroup) riskOverlayGroup.visible = showRiskOverlay.value
+}
+
+function updateRiskOverlayOpacity() {
+  if (riskOverlayMaterial) {
+    riskOverlayMaterial.opacity = riskOverlayOpacity.value
+  }
+}
+
+function focusRiskWorkface() {
+  if (!camera || !controls || !riskOverlayReady.value) return
+  if (sceneTimeline) sceneTimeline.kill()
+
+  const { xMin, xMax, y, zMin, zMax } = DEMO_WORKFACE
+  const center = new THREE.Vector3((xMin + xMax) / 2, y, (zMin + zMax) / 2)
+  const span = Math.max(xMax - xMin, zMax - zMin)
+  const destination = new THREE.Vector3(
+    center.x + span * 0.82,
+    center.y + span * 1.08,
+    center.z + span * 1.12
+  )
+
+  sceneTimeline = gsap.timeline({ defaults: { duration: 0.85, ease: "power3.inOut" } })
+  sceneTimeline
+    .to(camera.position, {
+      x: destination.x,
+      y: destination.y,
+      z: destination.z,
+      onUpdate: () => controls.update(),
+    }, 0)
+    .to(controls.target, {
+      x: center.x,
+      y: center.y,
+      z: center.z,
+      onUpdate: () => controls.update(),
+    }, 0)
+}
+
+function disposeRiskOverlay() {
+  riskOverlayReady.value = false
+  if (riskOverlayGroup) {
+    riskOverlayGroup.parent && riskOverlayGroup.parent.remove(riskOverlayGroup)
+    riskOverlayGroup.traverse((child) => {
+      child.geometry && child.geometry.dispose()
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material]
+        materials.forEach((material) => material.dispose())
+      }
+    })
+  }
+  if (riskOverlayTexture) riskOverlayTexture.dispose()
+  riskOverlayGroup = null
+  riskOverlayMaterial = null
+  riskOverlayTexture = null
 }
 
 function fitCameraToModel(animateIntro = false) {
@@ -605,6 +791,7 @@ function disposeObjectUrl() {
 function disposeModel() {
   if (sceneTimeline) sceneTimeline.kill()
   if (!modelRoot) return
+  disposeRiskOverlay()
   scene.remove(modelRoot)
   modelRoot.traverse((child) => {
     if (child.geometry) child.geometry.dispose()
@@ -643,10 +830,6 @@ function hashString(value) {
   return hash >>> 0
 }
 
-function formatNumber(value) {
-  return new Intl.NumberFormat("zh-CN").format(value || 0)
-}
-
 function formatVectorValue(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "0.00"
 }
@@ -660,8 +843,9 @@ function formatVectorValue(value) {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 42%, rgba(48, 220, 255, 0.12), transparent 34%),
-    #07101c;
+    radial-gradient(circle at 50% 48%, rgba(48, 220, 255, 0.14), transparent 36%),
+    radial-gradient(ellipse at 50% 70%, rgba(15, 74, 116, 0.26), transparent 62%),
+    transparent;
 }
 
 .viewer-canvas {
@@ -671,81 +855,82 @@ function formatVectorValue(value) {
 
 .viewer-toolbar {
   position: absolute;
-  top: 18px;
-  left: 22px;
-  right: 22px;
+  left: 50%;
+  bottom: 28px;
   z-index: 10;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: center;
   pointer-events: none;
-}
-
-.model-info {
-  position: relative;
-  min-width: 0;
-  padding: 10px 14px;
-  overflow: hidden;
-  border: 1px solid rgba(48, 220, 255, 0.24);
-  background: linear-gradient(90deg, rgba(8, 39, 74, 0.76), rgba(8, 39, 74, 0.12));
-  color: #d8f3ff;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
-}
-
-.model-info::after {
-  content: "";
-  position: absolute;
-  left: -80px;
-  top: 0;
-  width: 70px;
-  height: 100%;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transform: skewX(-18deg);
-  animation: glbInfoSweep 5.5s linear infinite;
-  pointer-events: none;
-}
-
-.title {
-  display: block;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.file-name {
-  display: block;
-  max-width: 38vw;
-  margin-top: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #93bdd1;
-  font-size: 12px;
 }
 
 .viewer-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(48, 220, 255, 0.28);
+  background: linear-gradient(180deg, rgba(9, 45, 76, 0.62), rgba(3, 16, 34, 0.68));
+  box-shadow:
+    inset 0 0 22px rgba(48, 220, 255, 0.12),
+    0 0 22px rgba(48, 220, 255, 0.12);
   pointer-events: auto;
+  backdrop-filter: blur(6px);
 }
 
 .viewer-btn {
-  height: 28px;
-  padding: 0 12px;
+  height: 32px;
+  min-width: 88px;
+  padding: 0 14px;
   border: 1px solid rgba(48, 220, 255, 0.55);
   color: #c4f3fe;
   background: linear-gradient(180deg, rgba(21, 91, 127, 0.85), rgba(7, 30, 64, 0.85));
-  box-shadow: inset 0 0 12px rgba(48, 220, 255, 0.12);
+  box-shadow:
+    inset 0 0 12px rgba(48, 220, 255, 0.12),
+    0 0 10px rgba(48, 220, 255, 0.1);
   cursor: pointer;
 }
 
-.viewer-btn.primary {
-  border-color: rgba(117, 232, 255, 0.85);
-  background: linear-gradient(180deg, rgba(40, 184, 231, 0.7), rgba(16, 95, 144, 0.6));
+.viewer-btn:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: rgba(117, 232, 255, 0.88);
+  box-shadow:
+    inset 0 0 16px rgba(48, 220, 255, 0.22),
+    0 0 16px rgba(48, 220, 255, 0.24);
 }
 
 .viewer-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opacity-control {
+  display: flex;
+  width: 156px;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid rgba(48, 220, 255, 0.38);
+  color: #c4f3fe;
+  background: rgba(7, 30, 64, 0.78);
+  font-size: 12px;
+}
+
+.opacity-control span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.opacity-control input {
+  width: 98px;
+  accent-color: #32d9ff;
+  cursor: pointer;
+}
+
+.opacity-control input:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -788,7 +973,6 @@ function formatVectorValue(value) {
   animation: spin 0.8s linear infinite;
 }
 
-.model-stats-panel,
 .observation-panel {
   position: absolute;
   z-index: 11;
@@ -802,14 +986,9 @@ function formatVectorValue(value) {
   pointer-events: none;
 }
 
-.model-stats-panel {
-  right: 24px;
-  top: 66px;
-}
-
 .observation-panel {
-  left: 22px;
-  bottom: 22px;
+  top: 92px;
+  right: 170px;
 }
 
 .panel-title {
@@ -817,34 +996,6 @@ function formatVectorValue(value) {
   color: #78c7ff;
   font-size: 14px;
   font-weight: 600;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: auto minmax(56px, 1fr);
-  gap: 2px 14px;
-}
-
-.stats-grid strong {
-  color: #75e8ff;
-  text-align: right;
-}
-
-.stats-line {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.drop-hint {
-  position: absolute;
-  right: 24px;
-  bottom: 22px;
-  z-index: 8;
-  color: rgba(216, 243, 255, 0.68);
-  font-size: 12px;
-  pointer-events: none;
 }
 
 .mine-glb-viewer.is-dragging::after {
@@ -861,24 +1012,6 @@ function formatVectorValue(value) {
   font-size: 22px;
   font-weight: 600;
   pointer-events: none;
-}
-
-@keyframes glbInfoSweep {
-  0% {
-    transform: translateX(0) skewX(-18deg);
-    opacity: 0;
-  }
-  14% {
-    opacity: 0.85;
-  }
-  42% {
-    transform: translateX(560px) skewX(-18deg);
-    opacity: 0;
-  }
-  100% {
-    transform: translateX(560px) skewX(-18deg);
-    opacity: 0;
-  }
 }
 
 @keyframes spin {
