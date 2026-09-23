@@ -15,8 +15,8 @@
         <button class="viewer-btn" type="button" :disabled="loading || !observations.length" @click="recalculateObservationColors">
           重算颜色
         </button>
-        <button class="viewer-btn" type="button" :disabled="loading || !modelRootReady" @click="regenerateSyntheticSources">
-          重新生成
+        <button class="viewer-btn" type="button" :disabled="loading || !modelRootReady" @click="reprojectObservations">
+          重新投影
         </button>
         <button class="viewer-btn" type="button" :disabled="loading || !riskOverlayReady" @click="toggleRiskOverlay">
           {{ showRiskOverlay ? "隐藏云图" : "显示云图" }}
@@ -56,15 +56,19 @@
 
     <div v-if="errorMessage" class="error-panel">{{ errorMessage }}</div>
 
+    <div v-if="projectionSummary" class="projection-status">{{ projectionSummary }}</div>
+
     <div v-if="selectedObservation" class="observation-panel">
       <div class="panel-title">{{ selectedObservation.name }}</div>
       <div>ID：{{ selectedObservation.id }}</div>
       <div>风险值：{{ selectedObservation.riskValue.toFixed(3) }}</div>
       <div>震级：{{ selectedObservation.magnitude.toFixed(1) }}</div>
-      <div>埋深：{{ selectedObservation.depth.toFixed(1) }} m</div>
+      <div>原始高程：{{ selectedObservation.sourceZ.toFixed(2) }} m</div>
+      <div>事件能量：{{ selectedObservation.energyJ.toFixed(0) }} J</div>
       <div>应力指数：{{ selectedObservation.stressIndex.toFixed(2) }}</div>
       <div>能量指数：{{ selectedObservation.energyIndex.toFixed(2) }}</div>
-      <div>坐标：{{ selectedObservation.x.toFixed(2) }}, {{ selectedObservation.y.toFixed(2) }}, {{ selectedObservation.z.toFixed(2) }}</div>
+      <div>平面坐标：{{ selectedObservation.sourceX.toFixed(2) }}, {{ selectedObservation.sourceY.toFixed(2) }}</div>
+      <div>模型坐标：{{ selectedObservation.x.toFixed(3) }}, {{ selectedObservation.y.toFixed(3) }}, {{ selectedObservation.z.toFixed(3) }}</div>
     </div>
   </div>
 </template>
@@ -75,18 +79,13 @@ import gsap from "gsap"
 import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
+import { createWorkfaceBounds, planarPointToUv, uvToWorkface } from "../../lib/workfaceProjection.js"
 
 const DEFAULT_MODEL = "/models/zhengti-demo.glb"
 const DEFAULT_RISK_MAP = "/defaults/hongyang-rockburst-warning-map.png"
-const SYNTHETIC_POINT_COUNT = 28
-const EXCLUDED_SOURCE_IDS = new Set(["MS-008", "MS-013"])
-const DEMO_WORKFACE = {
-  xMin: 0.0245,
-  xMax: 0.2229,
-  y: 0.365,
-  zMin: -0.2069,
-  zMax: 0.289,
-}
+const DEFAULT_EVENT_DATA = "/defaults/hongyang-microseismic-events.json"
+const SURFACE_SEGMENTS_X = 18
+const SURFACE_SEGMENTS_Z = 48
 
 const viewerRef = ref(null)
 const fileInputRef = ref(null)
@@ -102,6 +101,7 @@ const riskOverlayOpacity = ref(0.82)
 const riskOverlayReady = ref(false)
 const modelStats = ref(null)
 const modelRootReady = ref(false)
+const projectionSummary = ref("")
 
 let renderer = null
 let scene = null
@@ -112,9 +112,14 @@ let raycaster = null
 let mouse = null
 let modelRoot = null
 let pointLayer = null
+let pointMesh = null
 let riskOverlayGroup = null
 let riskOverlayMaterial = null
 let riskOverlayTexture = null
+let riskProjectionGrid = null
+let riskSurfaceSamples = []
+let activeWorkfaceBounds = null
+let planarObservationSource = null
 let gridHelper = null
 let axesHelper = null
 let animationId = 0
@@ -228,11 +233,6 @@ function resize() {
 function animate() {
   animationId = requestAnimationFrame(animate)
   controls && controls.update()
-  pointLayer && pointLayer.children.forEach((child, index) => {
-    const pulse = 1 + Math.sin(Date.now() * 0.003 + index * 0.7) * 0.08
-    const base = child.userData.baseScale || 1
-    child.scale.setScalar(base * pulse)
-  })
   renderer && scene && camera && renderer.render(scene, camera)
 }
 
@@ -244,31 +244,35 @@ function loadModel(url, name) {
   modelStats.value = null
   selectedObservation.value = null
   observations.value = []
+  projectionSummary.value = ""
+  planarObservationSource = null
   clearObservationLayer()
 
   loader.load(
     url,
-    (gltf) => {
-      disposeModel()
-      modelRoot = gltf.scene || gltf.scenes[0]
-      normalizeMaterials(modelRoot)
-      scene.add(modelRoot)
-      modelRoot.updateMatrixWorld(true)
+    async (gltf) => {
+      try {
+        disposeModel()
+        modelRoot = gltf.scene || gltf.scenes[0]
+        normalizeMaterials(modelRoot)
+        scene.add(modelRoot)
+        modelRoot.updateMatrixWorld(true)
 
-      modelStats.value = collectModelStats(modelRoot, gltf)
-      currentModelSeed = hashString(`${currentName.value}-${modelStats.value.vertexCount}-${modelStats.value.triangleCount}`)
-      currentPointRadius = calculatePointRadius(modelStats.value)
-      observations.value = generateSyntheticSources(modelRoot, SYNTHETIC_POINT_COUNT, currentModelSeed)
-      renderObservationLayer()
-      updateSceneHelpers(modelStats.value)
-
-      if (url === DEFAULT_MODEL) {
+        modelStats.value = collectModelStats(modelRoot, gltf)
+        currentModelSeed = hashString(`${currentName.value}-${modelStats.value.vertexCount}-${modelStats.value.triangleCount}`)
+        currentPointRadius = calculatePointRadius(modelStats.value)
+        updateSceneHelpers(modelStats.value)
         createRiskOverlay()
+        await loadProjectedObservations()
+        renderObservationLayer()
+        fitCameraToModel(true)
+        modelRootReady.value = true
+      } catch (error) {
+        errorMessage.value = `表面投影失败：${error.message || error}`
+        console.error(error)
+      } finally {
+        loading.value = false
       }
-
-      fitCameraToModel(true)
-      modelRootReady.value = true
-      loading.value = false
     },
     undefined,
     (error) => {
@@ -341,82 +345,228 @@ function collectModelStats(root, gltf) {
   }
 }
 
-function collectSampledWorldVertices(root, maxSamples = 5000) {
-  const vertices = []
-  root.updateMatrixWorld(true)
+function sampleTopSurfaceGrid(bounds) {
+  const rowSize = SURFACE_SEGMENTS_X + 1
+  const points = new Array(rowSize * (SURFACE_SEGMENTS_Z + 1)).fill(null)
+  const width = Math.max(bounds.xMax - bounds.xMin, Number.EPSILON)
+  const depth = Math.max(bounds.zMax - bounds.zMin, Number.EPSILON)
+  const halfCellX = width / SURFACE_SEGMENTS_X / 2
+  const halfCellZ = depth / SURFACE_SEGMENTS_Z / 2
+  const worldPoint = new THREE.Vector3()
 
-  root.traverse((child) => {
-    if (vertices.length >= maxSamples) return
-    if (!child.isMesh || !child.geometry || !child.geometry.attributes.position) return
-    const position = child.geometry.attributes.position
-    const localPoint = new THREE.Vector3()
-    const stride = Math.max(1, Math.ceil(position.count / Math.max(80, maxSamples / 4)))
-
-    for (let i = 0; i < position.count && vertices.length < maxSamples; i += stride) {
-      localPoint.fromBufferAttribute(position, i)
-      vertices.push(localPoint.clone().applyMatrix4(child.matrixWorld))
+  modelRoot.updateMatrixWorld(true)
+  modelRoot.traverse((child) => {
+    const position = child.isMesh && child.geometry && child.geometry.attributes.position
+    if (!position) return
+    for (let index = 0; index < position.count; index += 1) {
+      worldPoint.fromBufferAttribute(position, index).applyMatrix4(child.matrixWorld)
+      if (
+        worldPoint.x < bounds.xMin - halfCellX || worldPoint.x > bounds.xMax + halfCellX ||
+        worldPoint.z < bounds.zMin - halfCellZ || worldPoint.z > bounds.zMax + halfCellZ
+      ) continue
+      const ix = THREE.MathUtils.clamp(Math.round(((worldPoint.x - bounds.xMin) / width) * SURFACE_SEGMENTS_X), 0, SURFACE_SEGMENTS_X)
+      const iz = THREE.MathUtils.clamp(Math.round(((worldPoint.z - bounds.zMin) / depth) * SURFACE_SEGMENTS_Z), 0, SURFACE_SEGMENTS_Z)
+      const gridIndex = iz * rowSize + ix
+      if (!points[gridIndex] || worldPoint.y > points[gridIndex].y) points[gridIndex] = worldPoint.clone()
     }
   })
 
-  return vertices
+  const populated = points
+    .map((point, index) => point ? { point, ix: index % rowSize, iz: Math.floor(index / rowSize) } : null)
+    .filter(Boolean)
+  if (!populated.length) throw new Error("指定工作面范围内没有模型顶面顶点")
+  const sortedHeights = populated.map((sample) => sample.point.y).sort((a, b) => a - b)
+  const upperReference = sortedHeights[Math.floor((sortedHeights.length - 1) * 0.7)]
+  const upperFloor = upperReference - modelStats.value.size.y * 0.1
+  const upperSamples = populated.filter((sample) => sample.point.y >= upperFloor)
+  const surfaceSamples = upperSamples.length >= 4 ? upperSamples : populated
+
+  points.forEach((point, index) => {
+    const ix = index % rowSize
+    const iz = Math.floor(index / rowSize)
+    const x = bounds.xMin + (ix / SURFACE_SEGMENTS_X) * width
+    const z = bounds.zMin + (iz / SURFACE_SEGMENTS_Z) * depth
+    if (point && point.y >= upperFloor) {
+      point.x = x
+      point.z = z
+      return
+    }
+    let nearest = surfaceSamples[0]
+    let nearestDistance = Infinity
+    surfaceSamples.forEach((sample) => {
+      const distance = (sample.ix - ix) ** 2 + (sample.iz - iz) ** 2
+      if (distance < nearestDistance) {
+        nearest = sample
+        nearestDistance = distance
+      }
+    })
+    points[index] = new THREE.Vector3(x, nearest.point.y, z)
+  })
+  return points
 }
 
-function generateSyntheticSources(root, count, seed) {
-  const rand = createRandom(seed + formulaVersion * 1009)
-  const box = new THREE.Box3().setFromObject(root)
-  const size = box.getSize(new THREE.Vector3())
-  const center = box.getCenter(new THREE.Vector3())
-  const maxSize = Math.max(size.x, size.y, size.z) || 1
-  const vertices = collectSampledWorldVertices(root)
-  const points = []
+function createDrapedRiskGeometry(bounds) {
+  const positions = []
+  const uvs = []
+  const indices = []
+  const points = sampleTopSurfaceGrid(bounds)
+  const maxSize = Math.max(modelStats.value.size.x, modelStats.value.size.y, modelStats.value.size.z) || 1
+  const surfaceOffset = maxSize * 0.0012
 
-  for (let i = 0; i < count; i += 1) {
-    let position
-    if (vertices.length) {
-      const source = vertices[Math.floor(rand() * vertices.length)].clone()
-      const inward = 0.04 + rand() * 0.14
-      position = source.lerp(center, inward)
-      position.x += (rand() - 0.5) * maxSize * 0.012
-      position.y += (rand() - 0.5) * maxSize * 0.012
-      position.z += (rand() - 0.5) * maxSize * 0.012
-    } else {
-      position = new THREE.Vector3(
-        box.min.x + rand() * size.x,
-        box.min.y + rand() * size.y,
-        box.min.z + rand() * size.z
-      )
+  riskSurfaceSamples = []
+  for (let iz = 0; iz <= SURFACE_SEGMENTS_Z; iz += 1) {
+    const v = iz / SURFACE_SEGMENTS_Z
+    for (let ix = 0; ix <= SURFACE_SEGMENTS_X; ix += 1) {
+      const u = ix / SURFACE_SEGMENTS_X
+      const point = points[iz * (SURFACE_SEGMENTS_X + 1) + ix]
+      point.y += surfaceOffset
+      positions.push(point.x, point.y, point.z)
+      uvs.push(u, v)
+      riskSurfaceSamples.push({ point: point.clone(), u, v })
     }
-
-    const stressIndex = 0.18 + rand() * 0.82
-    const energyIndex = 0.12 + rand() * 0.88
-    const faultInfluence = rand()
-    const baseValue = 0.16 + rand() * 0.74
-    const magnitude = 0.6 + energyIndex * 2.7 + rand() * 0.35
-    const depth = Math.abs(position.y - box.max.y)
-    const point = {
-      id: `MS-${String(i + 1).padStart(3, "0")}`,
-      name: `震源${String(i + 1).padStart(2, "0")}`,
-      x: position.x,
-      y: position.y,
-      z: position.z,
-      baseValue,
-      stressIndex,
-      energyIndex,
-      faultInfluence,
-      magnitude,
-      depth,
-    }
-    point.riskValue = calculateRiskValue(point)
-    points.push(point)
   }
 
-  return points.filter((point) => !EXCLUDED_SOURCE_IDS.has(point.id))
+  const rowSize = SURFACE_SEGMENTS_X + 1
+  const maxStep = Math.max(modelStats.value.size.y * 0.35, surfaceOffset * 8)
+  for (let iz = 0; iz < SURFACE_SEGMENTS_Z; iz += 1) {
+    for (let ix = 0; ix < SURFACE_SEGMENTS_X; ix += 1) {
+      const a = iz * rowSize + ix
+      const b = a + 1
+      const c = a + rowSize
+      const d = c + 1
+      const cell = [points[a], points[b], points[c], points[d]]
+      if (cell.some((point) => !point)) continue
+      const heights = cell.map((point) => point.y)
+      if (Math.max(...heights) - Math.min(...heights) > maxStep) continue
+      indices.push(a, c, b, b, c, d)
+    }
+  }
+
+  if (!indices.length) throw new Error("指定工作面范围内没有可投射的模型表面")
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  riskProjectionGrid = {
+    points,
+    segmentsX: SURFACE_SEGMENTS_X,
+    segmentsZ: SURFACE_SEGMENTS_Z,
+  }
+  return geometry
+}
+
+function interpolateProjectedSurface(uv) {
+  if (!riskProjectionGrid) return null
+  const { points, segmentsX, segmentsZ } = riskProjectionGrid
+  const gx = THREE.MathUtils.clamp(uv.u, 0, 1) * segmentsX
+  const gz = THREE.MathUtils.clamp(uv.v, 0, 1) * segmentsZ
+  const ix = Math.min(Math.floor(gx), segmentsX - 1)
+  const iz = Math.min(Math.floor(gz), segmentsZ - 1)
+  const tx = gx - ix
+  const tz = gz - iz
+  const rowSize = segmentsX + 1
+  const a = points[iz * rowSize + ix]
+  const b = points[iz * rowSize + ix + 1]
+  const c = points[(iz + 1) * rowSize + ix]
+  const d = points[(iz + 1) * rowSize + ix + 1]
+
+  if (a && b && c && d) {
+    const lower = a.clone().lerp(b, tx)
+    const upper = c.clone().lerp(d, tx)
+    return lower.lerp(upper, tz)
+  }
+
+  let nearest = null
+  let nearestDistance = Infinity
+  riskSurfaceSamples.forEach((sample) => {
+    const distance = (sample.u - uv.u) ** 2 + (sample.v - uv.v) ** 2
+    if (distance < nearestDistance) {
+      nearest = sample.point
+      nearestDistance = distance
+    }
+  })
+  return nearest ? nearest.clone() : null
+}
+
+async function loadProjectedObservations() {
+  let payload
+  try {
+    const response = await fetch(DEFAULT_EVENT_DATA)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    payload = await response.json()
+  } catch (error) {
+    console.warn("真实微震事件加载失败，改用演示点位", error)
+    payload = createFallbackObservationPayload(currentModelSeed)
+  }
+
+  planarObservationSource = payload
+  observations.value = projectObservationPayload(payload)
+  projectionSummary.value = `表面投影 ${observations.value.length}/${payload.events.length} 个微震点 · ${riskSurfaceSamples.length} 个贴面采样`
+}
+
+function projectObservationPayload(payload) {
+  const events = Array.isArray(payload.events) ? payload.events : []
+  const bounds = payload.meta && payload.meta.bounds
+  if (!bounds || !activeWorkfaceBounds) return []
+  const energyLogs = events.map((event) => Math.log10(Math.max(Number(event.energy_j) || 1, 1)))
+  const minEnergy = Math.min(...energyLogs)
+  const maxEnergy = Math.max(...energyLogs)
+  const energySpan = Math.max(maxEnergy - minEnergy, Number.EPSILON)
+
+  return events.flatMap((event, index) => {
+    const uv = planarPointToUv(event, bounds)
+    const footprintPoint = uvToWorkface(uv, activeWorkfaceBounds)
+    const surfacePoint = interpolateProjectedSurface(uv)
+    if (!surfacePoint) return []
+    const energyJ = Math.max(Number(event.energy_j) || 1, 1)
+    const energyIndex = (Math.log10(energyJ) - minEnergy) / energySpan
+    const riskValue = THREE.MathUtils.clamp(Number(event.risk_value) || 0, 0, 1)
+    const sourceZ = Number(event.z) || 0
+    const point = {
+      id: event.id || `MS-${String(index + 1).padStart(3, "0")}`,
+      name: `微震事件 ${String(index + 1).padStart(3, "0")}`,
+      x: surfacePoint.x,
+      y: surfacePoint.y + currentPointRadius * 0.35,
+      z: surfacePoint.z,
+      sourceX: Number(event.x) || 0,
+      sourceY: Number(event.y) || 0,
+      sourceZ,
+      energyJ,
+      baseValue: riskValue,
+      stressIndex: THREE.MathUtils.clamp(riskValue * 0.72 + energyIndex * 0.28, 0, 1),
+      energyIndex,
+      faultInfluence: createRandom(hashString(`${event.id}-${event.x}-${event.y}`))(),
+      magnitude: THREE.MathUtils.clamp(Math.log10(energyJ) - 2, 0.5, 4.2),
+      footprintX: footprintPoint.x,
+      footprintZ: footprintPoint.z,
+      riskValue,
+    }
+    return [point]
+  })
+}
+
+function createFallbackObservationPayload(seed) {
+  const rand = createRandom(seed)
+  const events = Array.from({ length: 48 }, (_, index) => ({
+    id: `DEMO-${String(index + 1).padStart(3, "0")}`,
+    x: rand(),
+    y: rand(),
+    z: -1000 - rand() * 100,
+    energy_j: 10000 + rand() * 350000,
+    risk_value: rand() > 0.9 ? 0.5 + rand() * 0.5 : rand() * 0.22,
+  }))
+  return {
+    meta: { bounds: { xMin: 0, xMax: 1, yMin: 0, yMax: 1 } },
+    events,
+  }
 }
 
 function calculatePointRadius(stats) {
   if (!stats) return 0.38
   const maxSize = Math.max(stats.size.x, stats.size.y, stats.size.z) || 1
-  return THREE.MathUtils.clamp(maxSize * 0.012, 0.006, 2.2)
+  return THREE.MathUtils.clamp(maxSize * 0.0032, 0.0015, 0.7)
 }
 
 function updateSceneHelpers(stats) {
@@ -434,28 +584,12 @@ function updateSceneHelpers(stats) {
 
 function createRiskOverlay() {
   disposeRiskOverlay()
-  if (!modelRoot) return
+  if (!modelRoot || !modelStats.value) return
 
   riskOverlayGroup = new THREE.Group()
-  riskOverlayGroup.name = "demo-workface-risk-overlay"
-
-  const geometry = new THREE.BufferGeometry()
-  const { xMin, xMax, y, zMin, zMax } = DEMO_WORKFACE
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(
-      [
-        xMin, y, zMin,
-        xMax, y, zMin,
-        xMax, y, zMax,
-        xMin, y, zMax,
-      ],
-      3
-    )
-  )
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2))
-  geometry.setIndex([0, 2, 1, 0, 3, 2])
-  geometry.computeVertexNormals()
+  riskOverlayGroup.name = "draped-workface-risk-overlay"
+  activeWorkfaceBounds = createWorkfaceBounds(modelStats.value.box)
+  const geometry = createDrapedRiskGeometry(activeWorkfaceBounds)
 
   riskOverlayMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -474,18 +608,20 @@ function createRiskOverlay() {
   riskOverlayGroup.add(surface)
 
   const border = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry),
+    new THREE.EdgesGeometry(geometry, 50),
     new THREE.LineBasicMaterial({ color: 0x63e8ff, transparent: true, opacity: 0.8 })
   )
   border.renderOrder = 6
   riskOverlayGroup.add(border)
   riskOverlayGroup.visible = showRiskOverlay.value
-  modelRoot.add(riskOverlayGroup)
+  scene.add(riskOverlayGroup)
+  const overlayGroup = riskOverlayGroup
+  const overlayMaterial = riskOverlayMaterial
 
   new THREE.TextureLoader().load(
     DEFAULT_RISK_MAP,
     (sourceTexture) => {
-      if (!riskOverlayMaterial || !riskOverlayGroup) {
+      if (riskOverlayMaterial !== overlayMaterial || riskOverlayGroup !== overlayGroup) {
         sourceTexture.dispose()
         return
       }
@@ -515,15 +651,17 @@ function createRiskOverlay() {
       )
       sourceTexture.dispose()
 
-      riskOverlayTexture = new THREE.CanvasTexture(canvas)
-      riskOverlayTexture.colorSpace = THREE.SRGBColorSpace
-      riskOverlayTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
-      riskOverlayMaterial.map = riskOverlayTexture
-      riskOverlayMaterial.needsUpdate = true
+      const texture = new THREE.CanvasTexture(canvas)
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
+      riskOverlayTexture = texture
+      overlayMaterial.map = texture
+      overlayMaterial.needsUpdate = true
       riskOverlayReady.value = true
     },
     undefined,
     () => {
+      if (riskOverlayMaterial !== overlayMaterial || riskOverlayGroup !== overlayGroup) return
       riskOverlayReady.value = false
       errorMessage.value = "工作面云图纹理加载失败"
     }
@@ -542,11 +680,14 @@ function updateRiskOverlayOpacity() {
 }
 
 function focusRiskWorkface() {
-  if (!camera || !controls || !riskOverlayReady.value) return
+  if (!camera || !controls || !riskOverlayReady.value || !activeWorkfaceBounds) return
   if (sceneTimeline) sceneTimeline.kill()
 
-  const { xMin, xMax, y, zMin, zMax } = DEMO_WORKFACE
-  const center = new THREE.Vector3((xMin + xMax) / 2, y, (zMin + zMax) / 2)
+  const { xMin, xMax, zMin, zMax } = activeWorkfaceBounds
+  const averageY = riskSurfaceSamples.length
+    ? riskSurfaceSamples.reduce((sum, sample) => sum + sample.point.y, 0) / riskSurfaceSamples.length
+    : modelStats.value.center.y
+  const center = new THREE.Vector3((xMin + xMax) / 2, averageY, (zMin + zMax) / 2)
   const span = Math.max(xMax - xMin, zMax - zMin)
   const destination = new THREE.Vector3(
     center.x + span * 0.82,
@@ -586,6 +727,9 @@ function disposeRiskOverlay() {
   riskOverlayGroup = null
   riskOverlayMaterial = null
   riskOverlayTexture = null
+  riskProjectionGrid = null
+  riskSurfaceSamples = []
+  activeWorkfaceBounds = null
 }
 
 function fitCameraToModel(animateIntro = false) {
@@ -619,7 +763,6 @@ function playModelIntro() {
   const startPos = finalPos.clone().multiplyScalar(1.22)
   startPos.y += Math.max(1, finalPos.length() * 0.08)
 
-  modelRoot.scale.setScalar(0.92)
   camera.position.copy(startPos)
   controls.target.set(finalTarget.x, finalTarget.y - Math.max(0.5, finalPos.length() * 0.03), finalTarget.z)
   controls.update()
@@ -640,7 +783,6 @@ function playModelIntro() {
       duration: 1.15,
       onUpdate: () => controls && controls.update(),
     }, 0)
-    .to(modelRoot.scale, { x: 1, y: 1, z: 1, duration: 0.95 }, 0.08)
 }
 
 function resetCamera() {
@@ -668,36 +810,45 @@ function riskColor(value) {
 
 function renderObservationLayer() {
   clearObservationLayer()
-  if (!pointLayer) return
+  if (!pointLayer || !observations.value.length) return
 
-  observations.value.forEach((point) => {
-    const color = riskColor(point.riskValue)
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.45,
-      roughness: 0.35,
-      metalness: 0.05,
-    })
-    const geometry = new THREE.SphereGeometry(currentPointRadius, 24, 16)
-    const mesh = new THREE.Mesh(geometry, material)
-    const scale = 0.85 + point.riskValue * 0.7
-    mesh.name = point.id
-    mesh.position.set(point.x, point.y, point.z)
-    mesh.userData = { type: "synthetic-seismic-source", point, baseScale: scale }
-    mesh.scale.setScalar(scale)
-    pointLayer.add(mesh)
+  const geometry = new THREE.SphereGeometry(currentPointRadius, 14, 10)
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true,
   })
+  pointMesh = new THREE.InstancedMesh(geometry, material, observations.value.length)
+  pointMesh.name = "projected-microseismic-events"
+  pointMesh.userData = { type: "projected-microseismic-events", points: observations.value }
+  pointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  const matrix = new THREE.Matrix4()
+  const color = new THREE.Color()
+
+  observations.value.forEach((point, index) => {
+    const scale = 0.8 + point.riskValue * 1.6
+    matrix.compose(
+      new THREE.Vector3(point.x, point.y, point.z),
+      new THREE.Quaternion(),
+      new THREE.Vector3(scale, scale, scale)
+    )
+    pointMesh.setMatrixAt(index, matrix)
+    pointMesh.setColorAt(index, color.setHex(riskColor(point.riskValue)))
+  })
+  pointMesh.instanceMatrix.needsUpdate = true
+  if (pointMesh.instanceColor) pointMesh.instanceColor.needsUpdate = true
+  pointLayer.add(pointMesh)
   pointLayer.visible = showObservations.value
 }
 
 function clearObservationLayer() {
   if (!pointLayer) return
   while (pointLayer.children.length) {
-    const child = pointLayer.children.pop()
+    const child = pointLayer.children[pointLayer.children.length - 1]
+    pointLayer.remove(child)
     child.geometry && child.geometry.dispose()
     child.material && child.material.dispose()
   }
+  pointMesh = null
 }
 
 function toggleObservationLayer() {
@@ -706,12 +857,12 @@ function toggleObservationLayer() {
   if (!showObservations.value) selectedObservation.value = null
 }
 
-function regenerateSyntheticSources() {
-  if (!modelRoot) return
-  formulaVersion += 1
-  observations.value = generateSyntheticSources(modelRoot, SYNTHETIC_POINT_COUNT, currentModelSeed + formulaVersion * 7919)
+function reprojectObservations() {
+  if (!modelRoot || !planarObservationSource) return
+  observations.value = projectObservationPayload(planarObservationSource)
   selectedObservation.value = null
   renderObservationLayer()
+  projectionSummary.value = `表面投影 ${observations.value.length}/${planarObservationSource.events.length} 个微震点 · ${riskSurfaceSamples.length} 个贴面采样`
 }
 
 function recalculateObservationColors() {
@@ -721,16 +872,25 @@ function recalculateObservationColors() {
     riskValue: calculateRiskValue(point),
   }))
 
-  pointLayer.children.forEach((mesh) => {
-    const point = observations.value.find((item) => item.id === mesh.userData.point.id)
-    if (!point) return
-    const color = riskColor(point.riskValue)
-    const scale = 0.85 + point.riskValue * 0.7
-    mesh.userData.point = point
-    mesh.userData.baseScale = scale
-    mesh.material.color.set(color)
-    mesh.material.emissive.set(color)
+  if (!pointMesh) return
+  const matrix = new THREE.Matrix4()
+  const color = new THREE.Color()
+  observations.value.forEach((point, index) => {
+    const scale = 0.8 + point.riskValue * 1.6
+    matrix.compose(
+      new THREE.Vector3(point.x, point.y, point.z),
+      new THREE.Quaternion(),
+      new THREE.Vector3(scale, scale, scale)
+    )
+    pointMesh.setMatrixAt(index, matrix)
+    pointMesh.setColorAt(index, color.setHex(riskColor(point.riskValue)))
   })
+  pointMesh.userData.points = observations.value
+  pointMesh.instanceMatrix.needsUpdate = true
+  if (pointMesh.instanceColor) pointMesh.instanceColor.needsUpdate = true
+  if (selectedObservation.value) {
+    selectedObservation.value = observations.value.find((point) => point.id === selectedObservation.value.id) || null
+  }
 }
 
 function onCanvasClick(event) {
@@ -741,7 +901,10 @@ function onCanvasClick(event) {
   raycaster.setFromCamera(mouse, camera)
 
   const hits = raycaster.intersectObjects(pointLayer.children, true)
-  selectedObservation.value = hits.length ? hits[0].object.userData.point : null
+  const hit = hits[0]
+  selectedObservation.value = hit && Number.isInteger(hit.instanceId)
+    ? hit.object.userData.points[hit.instanceId] || null
+    : null
 }
 
 function onFileChange(event) {
@@ -962,6 +1125,19 @@ function formatVectorValue(value) {
   bottom: 34px;
   color: #ffd9d9;
   border-color: rgba(255, 100, 100, 0.5);
+}
+
+.projection-status {
+  position: absolute;
+  left: 170px;
+  top: 92px;
+  z-index: 9;
+  padding: 7px 11px;
+  border: 1px solid rgba(54, 207, 201, 0.34);
+  background: rgba(7, 28, 43, 0.76);
+  color: rgba(176, 248, 244, 0.9);
+  font-size: 12px;
+  pointer-events: none;
 }
 
 .spinner {
