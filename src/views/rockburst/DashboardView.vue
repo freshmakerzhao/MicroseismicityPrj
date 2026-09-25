@@ -34,10 +34,10 @@
         <mMenu :default-active="state.activeIndex" @select="handleMenuSelect">
           <mMenuItem index="overview">监测总览</mMenuItem>
           <mMenuItem index="cloud">冲击危险云图</mMenuItem>
-          <mMenuItem index="mine">井下地图</mMenuItem>
           <div class="top-menu-mid-space"></div>
+          <mMenuItem index="mine-reference">井下地图1.0</mMenuItem>
+          <mMenuItem index="mine">井下地图2.0</mMenuItem>
           <mMenuItem v-if="isAdminUser" index="users">人员管理</mMenuItem>
-          <mMenuItem index="settings">系统状态</mMenuItem>
         </mMenu>
       </div>
 
@@ -223,9 +223,11 @@
           </div>
         </div>
 
-        <div v-if="state.activeIndex === 'mine'" class="center-panel mine-panel">
-          <div class="panel-title">井下地图</div>
+        <div v-if="state.activeIndex === 'mine'" class="mine-stage">
           <MineGlbViewer class="mine-viewer" />
+        </div>
+        <div v-if="state.activeIndex === 'mine-reference'" class="mine-stage">
+          <MineReferenceViewer class="mine-viewer" :cloud-image-url="state.cloudImageUrl" />
         </div>
 
         <div v-if="state.activeIndex === 'users'" class="center-panel user-panel">
@@ -238,6 +240,7 @@
             <div class="user-table-row user-table-head">
               <span>用户名</span><span>姓名</span><span>角色</span><span>状态</span><span>操作</span>
             </div>
+            <div v-if="!users.length" class="user-empty-row">{{ userMessage || "暂无用户数据" }}</div>
             <div class="user-table-row" v-for="item in users" :key="item.id || item.username">
               <span>{{ item.username }}</span>
               <span>{{ item.display_name || item.name || "-" }}</span>
@@ -352,6 +355,7 @@ import mSvglineAnimation from "@/components/mSvglineAnimation/index.vue"
 import mRadar from "@/components/mRadar/index.vue"
 import mCard from "@/components/mCard/index.vue"
 import MineGlbViewer from "@/views/rockburst/MineGlbViewer.vue"
+import MineReferenceViewer from "@/views/rockburst/MineReferenceViewer.vue"
 import {
   deleteUser,
   fetchUsers,
@@ -447,9 +451,9 @@ const state = reactive({
   progress: 0,
   activeIndex: "overview",
   dragOver: false,
-  cloudFileName: "默认示例云图",
-  cloudImageUrl: DEFAULT_CLOUD_IMAGE,
-  cloudStatus: "已加载默认冲击危险云图示例",
+  cloudFileName: "红阳矿区微震预警判据.xls",
+  cloudImageUrl: "/defaults/hongyang-rockburst-warning-map.png",
+  cloudStatus: "已加载红阳矿区微震预警判据默认云图",
   cloudScale: 1,
   cloudOffsetX: 0,
   cloudOffsetY: 0,
@@ -513,7 +517,8 @@ const centerMetrics = [
 const bottomMenu = computed(() => [
   { index: "overview", label: "态势总览" },
   { index: "cloud", label: "云图生成" },
-  { index: "mine", label: "井下地图" },
+  { index: "mine-reference", label: "井下地图1.0" },
+  { index: "mine", label: "井下地图2.0" },
   ...(isAdminUser.value ? [{ index: "users", label: "权限管理" }] : []),
 ])
 
@@ -593,7 +598,7 @@ async function handleMenuSelect(index) {
     await loadUsers()
   }
   await nextTick()
-  gsap.fromTo(".center-panel", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" })
+  gsap.fromTo(".center-panel, .mine-stage", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" })
 }
 
 async function handleLogout() {
@@ -631,7 +636,14 @@ function handleCloudDrop(event) {
   if (file) uploadCloudFile(file)
 }
 
+let cloudGenerating = false
 async function uploadCloudFile(file) {
+  if (cloudGenerating) return
+  if (!/\.xls$/i.test(file.name) || file.size === 0 || file.size > 30 * 1024 * 1024) {
+    state.cloudStatus = "请选择非空的 .xls 文件（不超过 30 MB）"
+    return
+  }
+  cloudGenerating = true
   state.cloudFileName = file.name
   state.cloudStatus = "正在调用后端生成冲击危险云图..."
   try {
@@ -640,8 +652,9 @@ async function uploadCloudFile(file) {
     state.cloudStatus = "云图生成完成"
     resetCloudView()
   } catch (error) {
-    state.cloudImageUrl = ""
     state.cloudStatus = error.message || "云图生成失败，请检查后端服务"
+  } finally {
+    cloudGenerating = false
   }
 }
 
@@ -724,7 +737,15 @@ async function loadUsers() {
     users.value = await fetchUsers()
     userMessage.value = `已加载 ${users.value.length} 个用户。`
   } catch (error) {
-    userMessage.value = error.message || "用户列表读取失败"
+    users.value = []
+    const message = error.message || "用户列表读取失败"
+    if (/Not authenticated|Session user not found|401/.test(message)) {
+      userMessage.value = "登录状态已过期，请重新登录。"
+      await logout()
+      router.replace("/login")
+      return
+    }
+    userMessage.value = message
   }
 }
 
@@ -993,6 +1014,11 @@ async function removeUser(item) {
   }
 }
 
+.dashboard-screen .bottom-menu-item {
+  font-size: 13px !important;
+  letter-spacing: 0.2px !important;
+}
+
 .dashboard-screen .m-header-title {
   max-width: 1060px;
   margin: 0 auto;
@@ -1074,6 +1100,16 @@ async function removeUser(item) {
   top: 148px;
   bottom: 168px;
   opacity: 0;
+}
+
+.workbench.mode-mine,
+.workbench.mode-mine-reference {
+  left: 330px;
+  right: 330px;
+  top: 132px;
+  bottom: 112px;
+  z-index: 3;
+  pointer-events: none;
 }
 
 .center-panel {
@@ -1588,18 +1624,19 @@ async function removeUser(item) {
   padding-top: 44px;
 }
 
-.mine-panel {
-  display: flex;
-  flex-direction: column;
+.mine-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
 }
 
 .mine-viewer {
   position: relative;
-  z-index: 2;
-  flex: 1;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
   min-height: 0;
-  margin: 0 28px 28px;
-  border: 1px solid rgba(48, 220, 255, 0.16);
 }
 
 .user-toolbar {
@@ -1666,6 +1703,15 @@ async function removeUser(item) {
   color: #75e8ff;
   background: rgba(15, 84, 124, 0.4);
   font-weight: 700;
+}
+
+.user-empty-row {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: rgba(169, 227, 244, 0.74);
+  border-bottom: 1px solid rgba(48, 220, 255, 0.11);
+  letter-spacing: 0;
 }
 
 @keyframes panelScan {

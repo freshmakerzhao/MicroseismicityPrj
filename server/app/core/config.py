@@ -20,7 +20,7 @@ class Settings:
             "upload_folder": "uploads",
             "output_folder": "output",
             "max_upload_mb": 30,
-            "allowed_extensions": [".xls", ".xlsx", ".csv", ".txt"],
+            "allowed_extensions": [".xls"],
             "cors_origins": [
                 "http://localhost:8080",
                 "http://localhost:8081",
@@ -39,7 +39,7 @@ class Settings:
             "cors_origin_regex": r"https?://(localhost|127\.0\.0\.1):\d+",
             "surfer": {
                 "prog_id": "Surfer.Application",
-                "install_dir": "E:/Application_surfer11",
+                "install_dir": "",
                 "exe_path": "",
                 "clr_path": "",
                 "default_colormap": "Terrain.clr",
@@ -80,6 +80,7 @@ class Settings:
         merged = self._merge_config(self.default_config(), current)
         merged = self._merge_config(merged, updates)
 
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
         with self.config_file.open("w", encoding="utf-8") as fp:
             json.dump(merged, fp, ensure_ascii=False, indent=2)
 
@@ -136,8 +137,6 @@ class Settings:
         if self.surfer_exe_path:
             exe_dir = Path(self.surfer_exe_path).parent
             candidates.append(exe_dir / "ColorScales" / self.surfer_default_colormap)
-
-        candidates.append(Path("E:/Application_surfer11/ColorScales") / self.surfer_default_colormap)
 
         for candidate in candidates:
             if candidate.exists():

@@ -41,7 +41,7 @@ class SurferService:
 
         unique_prefix = uuid.uuid4().hex[:8]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_name = f"{timestamp}_{unique_prefix}_{Path(file.filename).name.replace(' ', '_')}"
+        safe_name = f"{timestamp}_{unique_prefix}.xls"
         upload_path = settings.upload_folder / safe_name
 
         total_size = 0
@@ -60,6 +60,11 @@ class SurferService:
                         )
 
                     target.write(chunk)
+            if total_size == 0:
+                raise HTTPException(status_code=400, detail="上传文件为空")
+        except Exception:
+            upload_path.unlink(missing_ok=True)
+            raise
         finally:
             file.file.close()
 
@@ -68,9 +73,15 @@ class SurferService:
         output_path = settings.output_folder / image_name
         grid_path = surfer_data_path.with_suffix(".grd")
 
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            upload_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=409, detail="正在生成云图，请完成后再试")
+        try:
             try:
-                self._write_computed_w_dat(upload_path, surfer_data_path)
+                try:
+                    self._write_computed_w_dat(upload_path, surfer_data_path)
+                except Exception as exc:
+                    raise HTTPException(status_code=400, detail=f"数据格式或内容无效：{exc}") from exc
                 run_surfer_complete(
                     data_file=str(surfer_data_path),
                     output_folder=str(settings.output_folder),
@@ -84,6 +95,8 @@ class SurferService:
                     visible=settings.surfer_visible,
                     screen_updating=settings.surfer_screen_updating,
                 )
+            except HTTPException:
+                raise
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -96,6 +109,8 @@ class SurferService:
                     surfer_data_path.unlink()
                 if grid_path.exists():
                     grid_path.unlink()
+        finally:
+            self._lock.release()
 
         if not output_path.exists():
             raise HTTPException(
@@ -109,6 +124,8 @@ class SurferService:
         rows = microseismic_service.build_surfer_rows(source_path.read_bytes())
         if not rows:
             raise ValueError("No valid rows after W calculation")
+        if len({(row['map_x'], row['map_y']) for row in rows}) < 3:
+            raise ValueError("生成云图至少需要 3 个不同坐标的有效事件")
 
         with target_path.open("w", encoding="ascii", newline="\n") as fp:
             for row in rows:

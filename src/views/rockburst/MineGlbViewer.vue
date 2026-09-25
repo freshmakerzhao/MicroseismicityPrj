@@ -12,7 +12,10 @@
         <button class="viewer-btn" type="button" :disabled="loading || !observations.length" @click="toggleObservationLayer">
           {{ showObservations ? "隐藏震源" : "显示震源" }}
         </button>
-        <button class="viewer-btn" type="button" :disabled="loading || !observations.length" @click="recalculateObservationColors">
+        <button v-if="georeferenced" class="viewer-btn" type="button" :disabled="loading" @click="toggleCoordinateMode">
+          {{ coordinateMode === "surface" ? "查看原始震源" : "查看贴面投影" }}
+        </button>
+        <button v-else class="viewer-btn" type="button" :disabled="loading || !observations.length" @click="recalculateObservationColors">
           重算颜色
         </button>
         <button class="viewer-btn" type="button" :disabled="loading || !modelRootReady" @click="reprojectObservations">
@@ -48,6 +51,12 @@
     </div>
 
     <div ref="viewerRef" class="viewer-canvas"></div>
+    <div v-if="georeferenced" class="layer-controls">
+      <button class="viewer-btn" @click="toggleTopView">{{ topView ? "返回双层三维" : "俯视核对点位" }}</button>
+      <button class="viewer-btn" :disabled="topView" @click="toggleUpperLayer">{{ upperVisible ? "隐藏 7 煤层" : "显示 7 煤层" }}</button>
+      <button class="viewer-btn" :disabled="topView" @click="toggleLayerSeparation">{{ layersSeparated ? "恢复层间位置" : "层间展开" }}</button>
+      <button class="viewer-btn" :disabled="topView" @click="toggleHeightScale">{{ heightScale === 1 ? "垂向放大 ×3" : "恢复真实比例" }}</button>
+    </div>
 
     <div v-if="loading" class="state-panel">
       <span class="spinner"></span>
@@ -57,16 +66,29 @@
     <div v-if="errorMessage" class="error-panel">{{ errorMessage }}</div>
 
     <div v-if="projectionSummary" class="projection-status">{{ projectionSummary }}</div>
+    <div v-if="georeferenced" class="coordinate-legend">
+      <strong>{{ topView ? "12 煤层 · 正交俯视核对" : "7 煤 / 12 煤 · 双层矿山" }}</strong>
+      <span>{{ coordinateMode === "surface" ? "点位投影至插值煤层面" : "点位使用原始 X / Y / Z" }}</span>
+      <span>米制假设 · 标高插值 · 测量基准待核验</span>
+      <div class="risk-scale"></div>
+      <span>统一 W 色标：0　　　0.5　　　≥1</span>
+      <span>金色：7 煤层　青色：12 煤层</span>
+      <span>垂向 {{ heightScale }}×{{ layersSeparated ? " · 上层展开 +80m（示意）" : " · 原始层间位置" }}</span>
+      <span>层边厚度为示意；点击点位对照 W</span>
+    </div>
 
     <div v-if="selectedObservation" class="observation-panel">
       <div class="panel-title">{{ selectedObservation.name }}</div>
       <div>ID：{{ selectedObservation.id }}</div>
       <div>风险值：{{ selectedObservation.riskValue.toFixed(3) }}</div>
-      <div>震级：{{ selectedObservation.magnitude.toFixed(1) }}</div>
+      <div v-if="!georeferenced">震级：{{ selectedObservation.magnitude.toFixed(1) }}</div>
       <div>原始高程：{{ selectedObservation.sourceZ.toFixed(2) }} m</div>
       <div>事件能量：{{ selectedObservation.energyJ.toFixed(0) }} J</div>
-      <div>应力指数：{{ selectedObservation.stressIndex.toFixed(2) }}</div>
-      <div>能量指数：{{ selectedObservation.energyIndex.toFixed(2) }}</div>
+      <div v-if="!georeferenced">应力指数：{{ selectedObservation.stressIndex.toFixed(2) }}</div>
+      <div v-if="!georeferenced">能量指数：{{ selectedObservation.energyIndex.toFixed(2) }}</div>
+      <div v-if="georeferenced && selectedObservation.seamElevation != null">插值煤层标高：{{ selectedObservation.seamElevation.toFixed(2) }} m</div>
+      <div v-if="georeferenced && selectedObservation.cloudValue != null">同坐标云图 W：{{ selectedObservation.cloudValue.toFixed(3) }}（网格插值）</div>
+      <div v-if="georeferenced">点位 W 为原始记录，云图 W 为插值结果</div>
       <div>平面坐标：{{ selectedObservation.sourceX.toFixed(2) }}, {{ selectedObservation.sourceY.toFixed(2) }}</div>
       <div>模型坐标：{{ selectedObservation.x.toFixed(3) }}, {{ selectedObservation.y.toFixed(3) }}, {{ selectedObservation.z.toFixed(3) }}</div>
     </div>
@@ -80,8 +102,10 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { createWorkfaceBounds, planarPointToUv, uvToWorkface } from "../../lib/workfaceProjection.js"
+import { georeferencedObservations, riskRgb } from "../../lib/mineCoordinates.js"
 
-const DEFAULT_MODEL = "/models/zhengti-demo.glb"
+const DEFAULT_MODEL = "/models/hongyang-coal12-georef.glb"
+const GEOREFERENCE_DATA = "/defaults/hongyang-coal12-georef.json"
 const DEFAULT_RISK_MAP = "/defaults/hongyang-rockburst-warning-map.png"
 const DEFAULT_EVENT_DATA = "/defaults/hongyang-microseismic-events.json"
 const SURFACE_SEGMENTS_X = 18
@@ -91,7 +115,7 @@ const viewerRef = ref(null)
 const fileInputRef = ref(null)
 const loading = ref(false)
 const isDragging = ref(false)
-const currentName = ref("整体巷道模型")
+const currentName = ref("12 煤层坐标验证模型")
 const errorMessage = ref("")
 const observations = ref([])
 const selectedObservation = ref(null)
@@ -102,6 +126,13 @@ const riskOverlayReady = ref(false)
 const modelStats = ref(null)
 const modelRootReady = ref(false)
 const projectionSummary = ref("")
+const georeferenced = ref(false)
+const coordinateMode = ref("surface")
+const topView = ref(false)
+const upperVisible = ref(true)
+const heightScale = ref(3)
+const layersSeparated = ref(false)
+let georeferenceData = null
 
 let renderer = null
 let scene = null
@@ -225,7 +256,11 @@ function resize() {
   const width = viewerRef.value.clientWidth
   const height = viewerRef.value.clientHeight
   if (!width || !height) return
-  camera.aspect = width / height
+  if (camera.isOrthographicCamera) {
+    const vertical = camera.top
+    camera.left = -vertical * width / height
+    camera.right = vertical * width / height
+  } else camera.aspect = width / height
   camera.updateProjectionMatrix()
   renderer.setSize(width, height)
 }
@@ -237,6 +272,8 @@ function animate() {
 }
 
 function loadModel(url, name) {
+  if (camera.isOrthographicCamera) restorePerspectiveCamera()
+  pointLayer.scale.set(1, 1, 1)
   loading.value = true
   errorMessage.value = ""
   currentName.value = name || "model.glb"
@@ -246,6 +283,8 @@ function loadModel(url, name) {
   observations.value = []
   projectionSummary.value = ""
   planarObservationSource = null
+  georeferenced.value = false
+  georeferenceData = null
   clearObservationLayer()
 
   loader.load(
@@ -254,18 +293,31 @@ function loadModel(url, name) {
       try {
         disposeModel()
         modelRoot = gltf.scene || gltf.scenes[0]
+        let hasCoordinateMetadata = false
+        modelRoot.traverse((child) => {
+          if (child.userData.georef_id === "hongyang-coal12-local-v1") hasCoordinateMetadata = true
+        })
+        if (url === DEFAULT_MODEL || hasCoordinateMetadata) {
+          const response = await fetch(GEOREFERENCE_DATA)
+          if (!response.ok) throw new Error("真实坐标数据加载失败")
+          georeferenceData = await response.json()
+          if (!hasCoordinateMetadata) throw new Error("模型缺少匹配的坐标标识")
+          georeferenced.value = true
+        }
         normalizeMaterials(modelRoot)
         scene.add(modelRoot)
         modelRoot.updateMatrixWorld(true)
 
         modelStats.value = collectModelStats(modelRoot, gltf)
         currentModelSeed = hashString(`${currentName.value}-${modelStats.value.vertexCount}-${modelStats.value.triangleCount}`)
-        currentPointRadius = calculatePointRadius(modelStats.value)
+        currentPointRadius = georeferenced.value ? 1.8 : calculatePointRadius(modelStats.value)
         updateSceneHelpers(modelStats.value)
         createRiskOverlay()
         await loadProjectedObservations()
         renderObservationLayer()
+        if (georeferenced.value) applyLayerDisplay()
         fitCameraToModel(true)
+        if (georeferenced.value) focusRiskWorkface()
         modelRootReady.value = true
       } catch (error) {
         errorMessage.value = `表面投影失败：${error.message || error}`
@@ -293,7 +345,7 @@ function normalizeMaterials(root) {
       if (material.map && "colorSpace" in material.map) {
         material.map.colorSpace = THREE.SRGBColorSpace
       }
-      if (!material.map && material.color) {
+      if (!georeferenced.value && !material.map && material.color) {
         material.color.set(0x6d8390)
       }
       material.needsUpdate = true
@@ -491,6 +543,11 @@ function interpolateProjectedSurface(uv) {
 }
 
 async function loadProjectedObservations() {
+  if (georeferenced.value) {
+    observations.value = georeferencedObservations(georeferenceData, coordinateMode.value)
+    updateCoordinateSummary()
+    return
+  }
   let payload
   try {
     const response = await fetch(DEFAULT_EVENT_DATA)
@@ -585,6 +642,10 @@ function updateSceneHelpers(stats) {
 function createRiskOverlay() {
   disposeRiskOverlay()
   if (!modelRoot || !modelStats.value) return
+  if (georeferenced.value) {
+    createGeoreferencedRiskOverlay()
+    return
+  }
 
   riskOverlayGroup = new THREE.Group()
   riskOverlayGroup.name = "draped-workface-risk-overlay"
@@ -681,17 +742,18 @@ function updateRiskOverlayOpacity() {
 
 function focusRiskWorkface() {
   if (!camera || !controls || !riskOverlayReady.value || !activeWorkfaceBounds) return
+  if (camera.isOrthographicCamera) restorePerspectiveCamera()
   if (sceneTimeline) sceneTimeline.kill()
 
   const { xMin, xMax, zMin, zMax } = activeWorkfaceBounds
   const averageY = riskSurfaceSamples.length
     ? riskSurfaceSamples.reduce((sum, sample) => sum + sample.point.y, 0) / riskSurfaceSamples.length
     : modelStats.value.center.y
-  const center = new THREE.Vector3((xMin + xMax) / 2, averageY, (zMin + zMax) / 2)
-  const span = Math.max(xMax - xMin, zMax - zMin)
+  const center = new THREE.Vector3((xMin + xMax) / 2, averageY * (georeferenced.value ? heightScale.value : 1), (zMin + zMax) / 2)
+  const span = Math.max(xMax - xMin, zMax - zMin) * (georeferenced.value ? 1.22 : 1)
   const destination = new THREE.Vector3(
     center.x + span * 0.82,
-    center.y + span * 1.08,
+    center.y + span * (georeferenced.value ? 0.62 : 1.08),
     center.z + span * 1.12
   )
 
@@ -734,6 +796,8 @@ function disposeRiskOverlay() {
 
 function fitCameraToModel(animateIntro = false) {
   if (!modelRoot) return
+  if (sceneTimeline) sceneTimeline.kill()
+  if (camera.isOrthographicCamera) restorePerspectiveCamera()
   const box = new THREE.Box3().setFromObject(modelRoot)
   const size = box.getSize(new THREE.Vector3())
   const center = box.getCenter(new THREE.Vector3())
@@ -815,7 +879,6 @@ function renderObservationLayer() {
   const geometry = new THREE.SphereGeometry(currentPointRadius, 14, 10)
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    vertexColors: true,
   })
   pointMesh = new THREE.InstancedMesh(geometry, material, observations.value.length)
   pointMesh.name = "projected-microseismic-events"
@@ -829,10 +892,12 @@ function renderObservationLayer() {
     matrix.compose(
       new THREE.Vector3(point.x, point.y, point.z),
       new THREE.Quaternion(),
-      new THREE.Vector3(scale, scale, scale)
+      new THREE.Vector3(scale, georeferenced.value ? scale / heightScale.value : scale, scale)
     )
     pointMesh.setMatrixAt(index, matrix)
-    pointMesh.setColorAt(index, color.setHex(riskColor(point.riskValue)))
+    if (georeferenced.value) color.setRGB(...riskRgb(point.riskValue), THREE.SRGBColorSpace)
+    else color.setHex(riskColor(point.riskValue))
+    pointMesh.setColorAt(index, color)
   })
   pointMesh.instanceMatrix.needsUpdate = true
   if (pointMesh.instanceColor) pointMesh.instanceColor.needsUpdate = true
@@ -858,6 +923,13 @@ function toggleObservationLayer() {
 }
 
 function reprojectObservations() {
+  if (georeferenced.value) {
+    observations.value = georeferencedObservations(georeferenceData, coordinateMode.value)
+    selectedObservation.value = null
+    renderObservationLayer()
+    updateCoordinateSummary()
+    return
+  }
   if (!modelRoot || !planarObservationSource) return
   observations.value = projectObservationPayload(planarObservationSource)
   selectedObservation.value = null
@@ -996,9 +1068,142 @@ function hashString(value) {
 function formatVectorValue(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "0.00"
 }
+
+function updateCoordinateSummary() {
+  projectionSummary.value = `${coordinateMode.value === "surface" ? "贴面投影" : "原始三维震源"} · ${observations.value.length} 个事件 · 坐标基准待核验`
+}
+
+function toggleCoordinateMode() {
+  if (topView.value) toggleTopView()
+  coordinateMode.value = coordinateMode.value === "surface" ? "native" : "surface"
+  reprojectObservations()
+}
+
+function applyLayerDisplay() {
+  if (!georeferenced.value || !modelRoot) return
+  modelRoot.scale.y = heightScale.value
+  pointLayer.scale.y = heightScale.value
+  if (riskOverlayGroup) riskOverlayGroup.scale.y = heightScale.value
+  const upper = modelRoot.getObjectByName("Coal7_Layer")
+  if (upper) {
+    upper.visible = upperVisible.value && !topView.value
+    upper.position.y = layersSeparated.value ? 80 : 0
+  }
+  modelRoot.updateMatrixWorld(true)
+  const displayedBounds = new THREE.Box3().setFromObject(modelRoot)
+  const displayedSize = displayedBounds.getSize(new THREE.Vector3())
+  if (gridHelper) gridHelper.position.y = displayedBounds.min.y - Math.max(displayedSize.x, displayedSize.z) * 0.025
+  if (axesHelper) axesHelper.visible = false
+}
+
+function toggleUpperLayer() {
+  upperVisible.value = !upperVisible.value
+  applyLayerDisplay()
+}
+
+function toggleLayerSeparation() {
+  layersSeparated.value = !layersSeparated.value
+  upperVisible.value = true
+  applyLayerDisplay()
+  fitCameraToModel(false)
+}
+
+function toggleHeightScale() {
+  heightScale.value = heightScale.value === 1 ? 3 : 1
+  applyLayerDisplay()
+  renderObservationLayer()
+  focusRiskWorkface()
+}
+
+function restorePerspectiveCamera() {
+  topView.value = false
+  camera = new THREE.PerspectiveCamera(45, viewerRef.value.clientWidth / viewerRef.value.clientHeight, 0.1, 100000)
+  controls.object = camera
+  controls.enableRotate = true
+  applyLayerDisplay()
+}
+
+function toggleTopView() {
+  if (sceneTimeline) sceneTimeline.kill()
+  if (topView.value) {
+    restorePerspectiveCamera()
+    focusRiskWorkface()
+    return
+  }
+  topView.value = true
+  coordinateMode.value = "surface"
+  reprojectObservations()
+  const bounds = activeWorkfaceBounds
+  const span = Math.max(bounds.xMax - bounds.xMin, bounds.zMax - bounds.zMin) * 0.66
+  const aspect = viewerRef.value.clientWidth / viewerRef.value.clientHeight
+  camera = new THREE.OrthographicCamera(-span * aspect, span * aspect, span, -span, 0.1, 100000)
+  const center = new THREE.Vector3((bounds.xMin + bounds.xMax) / 2, 0, (bounds.zMin + bounds.zMax) / 2)
+  camera.position.set(center.x, 10000, center.z)
+  camera.up.set(0, 0, -1)
+  controls.object = camera
+  controls.target.copy(center)
+  controls.enableRotate = false
+  controls.update()
+  applyLayerDisplay()
+}
+
+function createGeoreferencedRiskOverlay() {
+  const { risk, meta } = georeferenceData
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(risk.vertices.flat(), 3))
+  const colors = risk.colors.flatMap((value) => new THREE.Color().setRGB(...value, THREE.SRGBColorSpace).toArray())
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
+  geometry.setIndex(risk.indices)
+  geometry.computeVertexNormals()
+  riskOverlayMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: riskOverlayOpacity.value,
+    side: THREE.DoubleSide, depthWrite: false, polygonOffset: true,
+    polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  })
+  riskOverlayGroup = new THREE.Group()
+  riskOverlayGroup.name = "georeferenced-surfer-grid"
+  const overlay = new THREE.Mesh(geometry, riskOverlayMaterial)
+  overlay.renderOrder = 5
+  riskOverlayGroup.add(overlay)
+  riskOverlayGroup.visible = showRiskOverlay.value
+  scene.add(riskOverlayGroup)
+  activeWorkfaceBounds = {
+    xMin: meta.bounds.xMin - meta.origin[0], xMax: meta.bounds.xMax - meta.origin[0],
+    zMin: -(meta.bounds.yMax - meta.origin[1]), zMax: -(meta.bounds.yMin - meta.origin[1]),
+  }
+  riskSurfaceSamples = risk.vertices.map((point) => ({ point: new THREE.Vector3(...point) }))
+  riskOverlayReady.value = true
+}
 </script>
 
 <style scoped>
+.layer-controls {
+  position: absolute;
+  top: 44px;
+  left: 13.5%;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 75%;
+}
+.coordinate-legend {
+  position: absolute;
+  left: 13.5%;
+  top: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px;
+  color: #b5dbe8;
+  font-size: 11px;
+  background: rgba(6, 22, 35, 0.88);
+  border: 1px solid #245063;
+  pointer-events: none;
+}
+.risk-scale {
+  height: 8px;
+  background: linear-gradient(90deg, #0d8c9e, #33d6a1, #ffdb2e, #ff5c1f, #e61236);
+}
 .mine-glb-viewer {
   position: relative;
   width: 100%;

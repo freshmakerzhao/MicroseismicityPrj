@@ -7,21 +7,21 @@
     "dev": "vite --host 127.0.0.1 --port 8084",
     "serve": "vite --host 127.0.0.1 --port 8084",
     "build": "vite build",
-    "test": "node --test tests/workfaceProjection.test.mjs",
+    "test": "node --test tests/workfaceProjection.test.mjs tests/mineCoordinates.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 8085"
   },
   "dependencies": {
-    "autofit.js": "^3.1.0",
-    "gsap": "^3.12.2",
-    "normalize.css": "^8.0.1",
+    "autofit.js": "3.1.1",
+    "gsap": "3.12.5",
+    "normalize.css": "8.0.1",
     "three": "0.161.0",
-    "vue": "^3.2.47",
-    "vue-router": "^4.2.1"
+    "vue": "3.4.38",
+    "vue-router": "4.4.3"
   },
   "devDependencies": {
-    "@types/three": "^0.161.0",
-    "@vitejs/plugin-vue": "^4.1.0",
-    "sass": "^1.62.1",
-    "vite": "^4.3.2"
+    "@types/three": "0.161.2",
+    "@vitejs/plugin-vue": "4.6.2",
+    "sass": "1.77.8",
+    "vite": "4.5.3"
   }
 }
