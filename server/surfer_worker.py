@@ -137,12 +137,17 @@ def run_surfer_complete(
     except Exception as exc:
         raise RuntimeError(f"Surfer execution failed: {exc}") from exc
     finally:
-        if app:
-            app.Quit()
-        for post_file, _, _ in post_data_files:
-            if os.path.exists(post_file):
-                os.remove(post_file)
-        pythoncom.CoUninitialize()
+        try:
+            if app:
+                try:
+                    app.Quit()
+                except Exception:
+                    pass  # Do not hide the original failure if COM disconnected.
+            for post_file, _, _ in post_data_files:
+                if os.path.exists(post_file):
+                    os.remove(post_file)
+        finally:
+            pythoncom.CoUninitialize()
 
 
 def _write_risk_post_files(data_file, z_col):

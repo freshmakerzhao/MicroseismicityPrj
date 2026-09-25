@@ -1,0 +1,12 @@
+{
+  "max_upload_mb": 30,
+  "surfer": {
+    "prog_id": "Surfer.Application",
+    "install_dir": "",
+    "exe_path": "",
+    "clr_path": "",
+    "default_colormap": "Terrain.clr",
+    "visible": false,
+    "screen_updating": false
+  }
+}

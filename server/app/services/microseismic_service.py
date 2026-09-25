@@ -74,6 +74,9 @@ class MicroseismicService:
     def _read_events(self, file_contents: bytes) -> list[dict[str, Any]]:
         workbook = xlrd.open_workbook(file_contents=file_contents, on_demand=True)
         sheet = workbook.sheet_by_index(0)
+        if sheet.ncols < 7 or sheet.nrows < 2:
+            workbook.release_resources()
+            raise ValueError("首个工作表需要标题行及至少 7 列：日期、时间、X、Y、Z、能量、原 W")
         events: list[dict[str, Any]] = []
         for row in range(1, sheet.nrows):
             x = self._number(sheet.cell_value(row, 2))
@@ -81,7 +84,7 @@ class MicroseismicService:
             z = self._number(sheet.cell_value(row, 4))
             energy = self._number(sheet.cell_value(row, 5))
             old_w = self._number(sheet.cell_value(row, 6))
-            if x is None or y is None or energy is None:
+            if x is None or y is None or energy is None or energy < 0:
                 continue
             events.append({
                 "event_id": row,
@@ -94,6 +97,7 @@ class MicroseismicService:
                 "old_w": old_w,
                 "note": self._text(sheet.cell_value(row, 9)) if sheet.ncols > 9 else "",
             })
+        workbook.release_resources()
         return events
 
     def _q_event_r100(self, energy_j: float, r: float) -> float:

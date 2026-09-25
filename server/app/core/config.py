@@ -20,19 +20,26 @@ class Settings:
             "upload_folder": "uploads",
             "output_folder": "output",
             "max_upload_mb": 30,
-            "allowed_extensions": [".xls", ".xlsx", ".csv", ".txt"],
+            "allowed_extensions": [".xls"],
             "cors_origins": [
                 "http://localhost:8080",
                 "http://localhost:8081",
                 "http://localhost:8082",
+                "http://localhost:8083",
+                "http://localhost:8084",
+                "http://localhost:8085",
                 "http://localhost:3000",
                 "http://127.0.0.1:8080",
                 "http://127.0.0.1:8081",
                 "http://127.0.0.1:8082",
+                "http://127.0.0.1:8083",
+                "http://127.0.0.1:8084",
+                "http://127.0.0.1:8085",
             ],
+            "cors_origin_regex": r"https?://(localhost|127\.0\.0\.1):\d+",
             "surfer": {
                 "prog_id": "Surfer.Application",
-                "install_dir": "E:/Application_surfer11",
+                "install_dir": "",
                 "exe_path": "",
                 "clr_path": "",
                 "default_colormap": "Terrain.clr",
@@ -57,6 +64,7 @@ class Settings:
         os.makedirs(self.output_folder, exist_ok=True)
 
         self.cors_origins = merged.get("cors_origins", [])
+        self.cors_origin_regex = merged.get("cors_origin_regex", "")
 
         surfer_config = merged.get("surfer", {})
         self.surfer_prog_id = surfer_config.get("prog_id", "Surfer.Application")
@@ -72,6 +80,7 @@ class Settings:
         merged = self._merge_config(self.default_config(), current)
         merged = self._merge_config(merged, updates)
 
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
         with self.config_file.open("w", encoding="utf-8") as fp:
             json.dump(merged, fp, ensure_ascii=False, indent=2)
 
@@ -128,8 +137,6 @@ class Settings:
         if self.surfer_exe_path:
             exe_dir = Path(self.surfer_exe_path).parent
             candidates.append(exe_dir / "ColorScales" / self.surfer_default_colormap)
-
-        candidates.append(Path("E:/Application_surfer11/ColorScales") / self.surfer_default_colormap)
 
         for candidate in candidates:
             if candidate.exists():

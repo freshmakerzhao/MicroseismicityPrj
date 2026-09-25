@@ -26,6 +26,7 @@ test
 *.pyc
 output
 uploads
+server/data/
 tmp_input.txt
 cmake-build*
 demo
@@ -43,3 +44,17 @@ docs/~$*.docx
 
 # webpack 构建预览产物（运行时生成，不应入库）
 preview/
+
+# Local notes, source material, credentials and generated delivery files
+/docs/
+*.blend
+*.blend1
+__pycache__/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+/server/config/app_config.json
+/server/config/users.json
+/release/
