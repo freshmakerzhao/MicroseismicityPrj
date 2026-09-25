@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import secrets
 import sqlite3
 import uuid
@@ -15,16 +16,6 @@ USERS_FILE = settings.base_dir / "config" / "users.json"
 USERS_DB = settings.base_dir / "data" / "users.db"
 ROLES = {"admin", "user"}
 SESSIONS: dict[str, str] = {}
-DEFAULT_USERS = [
-    ("monitor01", "微震监测员01"),
-    ("monitor02", "微震监测员02"),
-    ("analyst01", "风险分析员01"),
-    ("analyst02", "风险分析员02"),
-    ("engineer01", "防冲工程师01"),
-    ("engineer02", "防冲工程师02"),
-    ("viewer01", "现场查看员01"),
-    ("viewer02", "现场查看员02"),
-]
 _DB_INITIALIZED = False
 
 
@@ -88,7 +79,6 @@ def _ensure_store() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         _migrate_json_users(conn)
         _ensure_admin_user(conn)
-        _append_default_users(conn)
         conn.commit()
 
     _DB_INITIALIZED = True
@@ -108,8 +98,10 @@ def _migrate_json_users(conn: sqlite3.Connection) -> None:
     for user in users:
         if not isinstance(user, dict) or not user.get("username"):
             continue
-        salt = user.get("salt") or secrets.token_hex(16)
-        password_hash = user.get("password_hash") or _hash_password("user123", salt)
+        salt = user.get("salt")
+        password_hash = user.get("password_hash")
+        if not salt or not password_hash:
+            continue  # Never invent a shared password for incomplete legacy records.
         conn.execute(
             """
             INSERT OR IGNORE INTO users (
@@ -135,6 +127,9 @@ def _ensure_admin_user(conn: sqlite3.Connection) -> None:
     if row:
         return
 
+    password = os.environ.get("ROCKBURST_ADMIN_PASSWORD", "")
+    if len(password) < 12:
+        raise HTTPException(status_code=503, detail="首次使用请设置至少 12 位的 ROCKBURST_ADMIN_PASSWORD 环境变量并重启后端")
     salt = secrets.token_hex(16)
     conn.execute(
         """
@@ -149,37 +144,11 @@ def _ensure_admin_user(conn: sqlite3.Connection) -> None:
             "admin",
             1,
             salt,
-            _hash_password("admin123", salt),
+            _hash_password(password, salt),
             _now(),
             _now(),
         ),
     )
-
-
-def _append_default_users(conn: sqlite3.Connection) -> None:
-    for username, display_name in DEFAULT_USERS:
-        row = conn.execute("SELECT id FROM users WHERE lower(username) = lower(?)", (username,)).fetchone()
-        if row:
-            continue
-        salt = secrets.token_hex(16)
-        conn.execute(
-            """
-            INSERT INTO users (
-                id, username, display_name, role, enabled, salt, password_hash, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(uuid.uuid4()),
-                username,
-                display_name,
-                "user",
-                1,
-                salt,
-                _hash_password("user123", salt),
-                _now(),
-                _now(),
-            ),
-        )
 
 
 def _load_users() -> list[dict[str, Any]]:

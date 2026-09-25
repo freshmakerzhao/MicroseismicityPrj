@@ -24,6 +24,8 @@ Copy-Item server\config\app_config.example.json server\config\app_config.json
 
 ```powershell
 # 窗口一
+$credential = Get-Credential -UserName admin -Message '设置首次管理员密码（至少 12 位）'
+$env:ROCKBURST_ADMIN_PASSWORD = $credential.GetNetworkCredential().Password
 .\.venv\Scripts\python.exe server\main.py
 ```
 
@@ -32,7 +34,7 @@ Copy-Item server\config\app_config.example.json server\config\app_config.json
 npm run dev
 ```
 
-打开 http://127.0.0.1:8084 。管理员 `admin / admin123`，登录后修改密码，并禁用或修改其他演示账户密码。SQLite 数据库自动创建。仅用于可信本地环境，请勿直接暴露到公网。
+打开 http://127.0.0.1:8084 。管理员为 `admin`，密码使用上一步自行设置的值；不再提供固定默认密码或自动创建演示账户。SQLite 数据库自动创建。环境变量仅用于首次建号，不会重置已有账户，之后启动可省略前两行。仅用于可信本地环境，请勿直接暴露到公网。
 
 后端端口 `5000`、前端 `8084`；占用时先停止旧服务。接口说明：http://127.0.0.1:5000/docs 。默认无需环境变量；自定义后端可在 `.env.local` 设置 `VITE_API_BASE_URL`（含 `/api`），并配置后端跨域及图片访问。
 
@@ -62,3 +64,5 @@ npm run build
 分享 `release/rockburst-platform.zip`，接收者解压后按上述步骤安装。`database/centerline_points.csv` 和 `public` 下数据、模型为运行必需。更换矿区需重新校准中线、坐标和模型。
 
 笔记、论文、截图、其余原始资料、本地配置、账户、依赖及生成结果不进入交付包。本地资料保留并忽略，结果在 `server/output`。旧测试模型 `zhengti-demo.glb` 已移除，可从 Git 历史恢复。忽略规则不会清除 Git 历史，分享时优先使用 ZIP。
+
+安全提示：旧 Git 历史含账户密码哈希、盐值、本地路径和内部文档，历史默认密码视为公开。已有安装需修改管理员及其他旧账户密码、禁用不用的演示账户；本次更新不会替你修改本地账户。矿区坐标、能量与模型属于业务数据，分享前确认授权。可运行 `python scripts/audit_secrets.py`（当前提交）或加 `--history`（本地全部引用）作常见凭据模式检查；模式扫描不等于完整安全审计。

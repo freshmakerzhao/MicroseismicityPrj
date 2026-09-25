@@ -185,7 +185,7 @@ def _write_risk_post_files(data_file, z_col):
 
 
 if __name__ == "__main__":
-    sample_data = r"E:\Workspace_school\vue-echarts-master\资料\数据源\红阳矿区微震预警判据.xls"
+    sample_data = os.path.join(os.path.dirname(__file__), "..", "public", "samples", "hongyang-warning-demo.xls")
     if os.path.exists(sample_data):
         run_surfer_complete(sample_data)
     else:

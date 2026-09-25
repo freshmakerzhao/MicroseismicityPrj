@@ -58,3 +58,10 @@ venv/
 /server/config/app_config.json
 /server/config/users.json
 /release/
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.sqlite
+*.sqlite3
