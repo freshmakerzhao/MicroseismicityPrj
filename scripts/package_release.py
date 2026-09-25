@@ -19,7 +19,7 @@ def included(path):
         return relative.name == "app_config.example.json"
     return path.suffix.lower() in {".py", ".ps1", ".js", ".mjs", ".vue", ".json", ".css",
         ".scss", ".sass", ".png", ".jpg", ".jpeg", ".svg", ".gif", ".ico", ".woff", ".woff2",
-        ".ttf", ".otf", ".glb", ".gltf", ".bin", ".csv", ".cpp", ".h", ".txt"}
+        ".ttf", ".otf", ".glb", ".gltf", ".bin", ".csv", ".xls", ".cpp", ".h", ".txt"}
 
 
 def main():

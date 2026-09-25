@@ -22,8 +22,22 @@ class ReleaseTests(unittest.TestCase):
                      'server/output/map.png', 'server/__pycache__/main.pyc']:
             self.assertFalse(included(ROOT / name), name)
         for name in ['database/centerline_points.csv', 'public/models/hangdao.glb',
-                     'server/config/app_config.example.json', 'src/assets/font/D-DIN-Bold.otf', 'README.md']:
+                     'server/config/app_config.example.json', 'src/assets/font/D-DIN-Bold.otf',
+                     'public/samples/hongyang-warning-demo.xls', 'README.md']:
             self.assertTrue(included(ROOT / name), name)
+
+    def test_demo_assets_are_complete(self):
+        from app.services.microseismic_service import microseismic_service
+        sample = ROOT / 'public/samples/hongyang-warning-demo.xls'
+        rows = microseismic_service.build_surfer_rows(sample.read_bytes())
+        self.assertGreaterEqual(len(rows), 3)
+        self.assertEqual(
+            {p.name for p in (ROOT / 'public/models').glob('*.glb')},
+            {'hangdao.glb', 'hongyang-coal12-georef.glb'},
+        )
+        for name in ['hongyang-coal12-georef.json', 'hongyang-microseismic-events.json',
+                     'hongyang-rockburst-warning-map.png']:
+            self.assertTrue((ROOT / 'public/defaults' / name).is_file(), name)
 
     def generate_failure(self, contents, expected, busy=False, too_large=False):
         service = SurferService()

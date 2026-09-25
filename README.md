@@ -38,6 +38,13 @@ npm run dev
 
 ## 生成与贴图
 
+演示数据、云图及两版模型已随仓库提供，无需另找资料：
+
+- `public/samples/hongyang-warning-demo.xls`：生成云图的上传示例，也可在页面点击“下载演示数据”。
+- `public/models/hangdao.glb`：井下地图 1.0 巷道模型。
+- `public/models/hongyang-coal12-georef.glb`：井下地图 2.0 双层模型。
+- `public/defaults/`：默认云图、事件和坐标配准数据；页面自动加载。
+
 1. 在“冲击危险云图”上传 `.xls`（非空、最多 30 MB）。首个工作表第一行为标题，A～G 列依次为日期、时间、X、Y、Z、能量（J）、原 W；W 会重新计算。不能直接将 `.xlsx` 改后缀。
 2. 生成后切换“井下地图1.0”，云图自动铺在 `hangdao.glb` 的工作面载体上，可旋转、调整透明度。失败保留上一张云图。
 3. 也可直接导入 PNG/JPG（最多 20 MB），无需 Surfer。默认云图可勾选“裁去默认云图边框”，自制无边框贴图取消勾选。导入图片仅在当前页面有效，切换页面后需重新导入。
@@ -54,4 +61,4 @@ npm run build
 
 分享 `release/rockburst-platform.zip`，接收者解压后按上述步骤安装。`database/centerline_points.csv` 和 `public` 下数据、模型为运行必需。更换矿区需重新校准中线、坐标和模型。
 
-笔记、论文、截图、原始资料、本地配置、账户、依赖及生成结果不进入交付包。本地文件保留并忽略，结果在 `server/output`。忽略规则不会清除 Git 历史，分享时优先使用 ZIP。
+笔记、论文、截图、其余原始资料、本地配置、账户、依赖及生成结果不进入交付包。本地资料保留并忽略，结果在 `server/output`。旧测试模型 `zhengti-demo.glb` 已移除，可从 Git 历史恢复。忽略规则不会清除 Git 历史，分享时优先使用 ZIP。

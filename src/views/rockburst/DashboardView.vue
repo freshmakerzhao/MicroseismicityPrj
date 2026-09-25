@@ -190,8 +190,9 @@
             @dragleave.prevent="state.dragOver = false"
             @drop.prevent="handleCloudDrop"
           >
-            <input ref="cloudInputRef" type="file" accept=".xls,.xlsx,.csv,.txt,.dat" @change="handleCloudPick" />
+            <input ref="cloudInputRef" type="file" accept=".xls" @change="handleCloudPick" />
             <button class="primary-btn" type="button" @click="cloudInputRef && cloudInputRef.click()">上传文件</button>
+            <a class="ghost-btn" href="/samples/hongyang-warning-demo.xls" download="红阳矿区微震预警判据.xls">下载演示数据</a>
             <span>{{ state.cloudFileName || "拖拽监测数据文件到此处，自动调用后端生成危险云图" }}</span>
           </div>
           <div class="cloud-tools" v-if="state.cloudImageUrl">
